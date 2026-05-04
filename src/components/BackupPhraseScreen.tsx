@@ -6,6 +6,7 @@ export function BackupPhraseScreen() {
   const { pendingBackupPhrase, acknowledgeBackup } = useAuth();
   const [confirmed, setConfirmed] = useState(false);
   const [copied, setCopied] = useState(false);
+  const [hasCopied, setHasCopied] = useState(false);
 
   if (!pendingBackupPhrase) return null;
   const words = pendingBackupPhrase.split(" ");
@@ -14,6 +15,7 @@ export function BackupPhraseScreen() {
     try {
       await navigator.clipboard.writeText(pendingBackupPhrase);
       setCopied(true);
+      setHasCopied(true);
       setTimeout(() => setCopied(false), 1500);
     } catch {
       /* noop */
