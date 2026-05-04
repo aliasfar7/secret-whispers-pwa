@@ -6,6 +6,7 @@ export function BackupPhraseScreen() {
   const { pendingBackupPhrase, acknowledgeBackup } = useAuth();
   const [confirmed, setConfirmed] = useState(false);
   const [copied, setCopied] = useState(false);
+  const [hasCopied, setHasCopied] = useState(false);
 
   if (!pendingBackupPhrase) return null;
   const words = pendingBackupPhrase.split(" ");
@@ -14,6 +15,7 @@ export function BackupPhraseScreen() {
     try {
       await navigator.clipboard.writeText(pendingBackupPhrase);
       setCopied(true);
+      setHasCopied(true);
       setTimeout(() => setCopied(false), 1500);
     } catch {
       /* noop */
@@ -54,18 +56,30 @@ export function BackupPhraseScreen() {
           </button>
         </div>
 
-        <label className="mt-6 flex items-start gap-3 text-sm text-foreground">
+        <label
+          className={`mt-6 flex items-start gap-3 text-sm ${
+            hasCopied ? "text-foreground" : "text-muted-foreground"
+          }`}
+        >
           <input
             type="checkbox"
             checked={confirmed}
+            disabled={!copied}
             onChange={(e) => setConfirmed(e.target.checked)}
-            className="mt-1 h-4 w-4 accent-primary"
+            className="mt-1 h-4 w-4 accent-primary disabled:opacity-50"
           />
-          <span>I have saved my recovery phrase somewhere safe.</span>
+          <span>
+            I have copied or written down my recovery phrase and stored it safely.
+          </span>
         </label>
+        {!copied && (
+          <p className="mt-2 text-xs text-muted-foreground">
+            Tap <span className="text-foreground">Copy phrase</span> first to continue.
+          </p>
+        )}
 
         <button
-          disabled={!confirmed}
+          disabled={!confirmed || !copied}
           onClick={acknowledgeBackup}
           className="mt-6 w-full rounded-full bg-primary px-4 py-3.5 font-medium text-primary-foreground active:scale-[0.98] disabled:opacity-40"
         >
