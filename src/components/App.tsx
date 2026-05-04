@@ -35,7 +35,7 @@ export function App() {
   }
 
   if (!session) return <LoginScreen />;
-  if (needsUsername || !profile) return <UsernameScreen />;
   if (pendingBackupPhrase) return <BackupPhraseScreen />;
+  if (needsUsername || !profile) return <UsernameScreen />;
   return <ChatShell />;
 }
