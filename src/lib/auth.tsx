@@ -94,7 +94,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         keyPair,
         loading,
         needsUsername,
-        signInWithMagicLink,
+        signInAnonymously,
         completeProfile,
         signOut,
       }}
