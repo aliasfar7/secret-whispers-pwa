@@ -13,14 +13,20 @@ import {
   type RawMessage,
   type Room,
 } from "@/lib/chat";
-import { Send, Lock } from "lucide-react";
+import { ArrowLeft, Lock, MoreVertical, Send, Smile } from "lucide-react";
 
 function formatTime(iso: string) {
   const d = new Date(iso);
   return d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
 }
 
-export function ChatRoom({ room }: { room: Room }) {
+function initials(name?: string) {
+  if (!name) return "?";
+  const parts = name.trim().split(/\s+/);
+  return (parts[0]?.[0] ?? "?").toUpperCase() + (parts[1]?.[0]?.toUpperCase() ?? "");
+}
+
+export function ChatRoom({ room, onBack }: { room: Room; onBack?: () => void }) {
   const { profile, keyPair } = useAuth();
   const [members, setMembers] = useState<
     { user_id: string; username: string; public_key: string }[]
@@ -80,7 +86,6 @@ export function ChatRoom({ room }: { room: Room }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [room.id, profile?.id]);
 
-  // Realtime subscription
   useEffect(() => {
     if (!profile) return;
     const ch = supabase
@@ -141,80 +146,131 @@ export function ChatRoom({ room }: { room: Room }) {
     }
   };
 
+  const title = room.display_name ?? "Chat";
+
   return (
     <div className="flex h-full min-h-0 flex-1 flex-col">
-      <header className="hidden items-center justify-between border-b border-border bg-card/40 px-5 py-3 md:flex">
-        <div>
-          <h2 className="font-semibold text-foreground">{room.display_name ?? "Chat"}</h2>
-          <p className="text-xs text-muted-foreground">
-            <Lock className="mr-1 inline h-3 w-3" />
-            End-to-end encrypted · {members.length} member{members.length === 1 ? "" : "s"}
-          </p>
+      {/* Header */}
+      <header className="flex items-center gap-2 bg-[var(--header-bg)] px-2 py-2 md:px-4">
+        {onBack && (
+          <button
+            onClick={onBack}
+            className="rounded-full p-2 text-foreground hover:bg-accent md:hidden"
+            aria-label="Back"
+          >
+            <ArrowLeft className="h-5 w-5" />
+          </button>
+        )}
+        <div className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-full bg-[var(--bubble-theirs)] text-sm font-semibold">
+          {initials(title)}
         </div>
+        <div className="min-w-0 flex-1">
+          <div className="truncate text-[15px] font-medium text-foreground">{title}</div>
+          <div className="flex items-center gap-1 text-[11px] text-muted-foreground">
+            <Lock className="h-3 w-3" />
+            end-to-end encrypted · {members.length} member{members.length === 1 ? "" : "s"}
+          </div>
+        </div>
+        <button
+          className="rounded-full p-2 text-muted-foreground hover:bg-accent hover:text-foreground"
+          aria-label="More"
+        >
+          <MoreVertical className="h-5 w-5" />
+        </button>
       </header>
 
-      <div ref={scrollerRef} className="flex-1 space-y-1 overflow-y-auto px-4 py-4">
-        {messages.length === 0 && (
-          <div className="mt-8 text-center text-sm text-muted-foreground">
-            No messages yet. Say hi 👋
+      {/* Messages */}
+      <div ref={scrollerRef} className="chat-doodle flex-1 overflow-y-auto px-3 py-4">
+        <div className="mx-auto flex max-w-2xl flex-col gap-1">
+          <div className="mx-auto mb-3 rounded-md bg-yellow-500/10 px-3 py-1.5 text-center text-[11px] text-yellow-200/90 ring-1 ring-yellow-500/20">
+            <Lock className="mr-1 inline h-3 w-3" />
+            Messages are end-to-end encrypted. No one outside this chat can read them.
           </div>
-        )}
-        {messages.map((m, i) => {
-          const mine = m.sender_id === profile?.id;
-          const prev = messages[i - 1];
-          const showName = room.is_group && !mine && prev?.sender_id !== m.sender_id;
-          return (
-            <div key={m.id} className={`flex ${mine ? "justify-end" : "justify-start"}`}>
-              <div className="max-w-[80%]">
-                {showName && (
-                  <div className="mb-0.5 ml-3 text-xs text-muted-foreground">
-                    {m.sender_username ?? "unknown"}
-                  </div>
-                )}
+          {messages.length === 0 && (
+            <div className="mt-6 text-center text-sm text-muted-foreground">
+              No messages yet. Say hi 👋
+            </div>
+          )}
+          {messages.map((m, i) => {
+            const mine = m.sender_id === profile?.id;
+            const prev = messages[i - 1];
+            const showName = room.is_group && !mine && prev?.sender_id !== m.sender_id;
+            const tail = prev?.sender_id !== m.sender_id;
+            return (
+              <div key={m.id} className={`flex ${mine ? "justify-end" : "justify-start"}`}>
                 <div
-                  className={`rounded-2xl px-3.5 py-2 text-sm leading-relaxed shadow-sm ${
+                  className={`relative max-w-[78%] rounded-lg px-2.5 py-1.5 text-sm shadow-sm ${
                     mine
-                      ? "rounded-br-md bg-[var(--bubble-mine)] text-[var(--bubble-mine-fg)]"
-                      : "rounded-bl-md bg-[var(--bubble-theirs)] text-[var(--bubble-theirs-fg)]"
+                      ? "bg-[var(--bubble-mine)] text-[var(--bubble-mine-fg)]"
+                      : "bg-[var(--bubble-theirs)] text-[var(--bubble-theirs-fg)]"
+                  } ${
+                    tail
+                      ? mine
+                        ? "rounded-tr-sm"
+                        : "rounded-tl-sm"
+                      : ""
                   }`}
+                  style={{ minWidth: 64 }}
                 >
-                  {m.failed ? (
-                    <span className="italic opacity-70">Unable to decrypt message</span>
-                  ) : (
-                    <span className="whitespace-pre-wrap break-words">{m.text}</span>
+                  {showName && (
+                    <div className="mb-0.5 text-xs font-medium text-primary">
+                      {m.sender_username ?? "unknown"}
+                    </div>
                   )}
-                  <div
-                    className={`mt-1 text-[10px] ${
-                      mine ? "text-white/70" : "text-muted-foreground"
+                  {m.failed ? (
+                    <span className="italic opacity-70">Unable to decrypt</span>
+                  ) : (
+                    <span className="whitespace-pre-wrap break-words pr-12">{m.text}</span>
+                  )}
+                  <span
+                    className={`pointer-events-none absolute bottom-1 right-2 text-[10px] ${
+                      mine ? "text-white/60" : "text-muted-foreground"
                     }`}
                   >
                     {formatTime(m.created_at)}
-                  </div>
+                  </span>
                 </div>
               </div>
-            </div>
-          );
-        })}
+            );
+          })}
+        </div>
       </div>
 
-      {err && (
-        <div className="px-4 pb-2 text-sm text-destructive">{err}</div>
-      )}
+      {err && <div className="bg-destructive/10 px-4 py-2 text-sm text-destructive">{err}</div>}
 
-      <form onSubmit={send} className="flex items-center gap-2 border-t border-border bg-card/40 p-3">
-        <input
+      {/* Composer */}
+      <form
+        onSubmit={send}
+        className="flex items-end gap-2 bg-[var(--header-bg)] px-2 py-2 md:px-3"
+        style={{ paddingBottom: "calc(env(safe-area-inset-bottom, 0px) + 0.5rem)" }}
+      >
+        <button
+          type="button"
+          className="flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-full text-muted-foreground hover:bg-accent hover:text-foreground"
+          aria-label="Emoji"
+        >
+          <Smile className="h-6 w-6" />
+        </button>
+        <textarea
           value={text}
           onChange={(e) => setText(e.target.value)}
-          placeholder="Type a message…"
-          className="flex-1 rounded-full border border-input bg-background px-4 py-2.5 text-foreground outline-none focus:border-primary focus:ring-2 focus:ring-primary/30"
+          onKeyDown={(e) => {
+            if (e.key === "Enter" && !e.shiftKey) {
+              e.preventDefault();
+              send(e as unknown as React.FormEvent);
+            }
+          }}
+          rows={1}
+          placeholder="Message"
+          className="max-h-32 min-h-11 flex-1 resize-none rounded-3xl border-0 bg-[var(--bubble-theirs)] px-4 py-2.5 text-[15px] text-foreground outline-none placeholder:text-muted-foreground"
         />
         <button
           type="submit"
           disabled={sending || !text.trim()}
-          className="flex h-11 w-11 items-center justify-center rounded-full bg-primary text-primary-foreground hover:opacity-90 disabled:opacity-50"
+          className="flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-full bg-primary text-primary-foreground transition active:scale-95 disabled:opacity-60"
           aria-label="Send"
         >
-          <Send className="h-4 w-4" />
+          <Send className="h-5 w-5" />
         </button>
       </form>
     </div>
