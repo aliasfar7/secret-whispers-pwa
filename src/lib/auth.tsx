@@ -12,7 +12,7 @@ type AuthCtx = {
   keyPair: KeyPair | null;
   loading: boolean;
   needsUsername: boolean;
-  signInWithMagicLink: (email: string) => Promise<void>;
+  signInAnonymously: () => Promise<void>;
   completeProfile: (username: string) => Promise<void>;
   signOut: () => Promise<void>;
 };
@@ -64,11 +64,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     })();
   }, [session]);
 
-  const signInWithMagicLink = async (email: string) => {
-    const { error } = await supabase.auth.signInWithOtp({
-      email,
-      options: { emailRedirectTo: window.location.origin },
-    });
+  const signInAnonymously = async () => {
+    const { error } = await supabase.auth.signInAnonymously();
     if (error) throw error;
   };
 
@@ -97,7 +94,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         keyPair,
         loading,
         needsUsername,
-        signInWithMagicLink,
+        signInAnonymously,
         completeProfile,
         signOut,
       }}
