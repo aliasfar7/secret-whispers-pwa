@@ -13,7 +13,11 @@ import {
   type RawMessage,
   type Room,
 } from "@/lib/chat";
-import { ArrowLeft, Lock, MoreVertical, Send, Smile } from "lucide-react";
+import { ArrowLeft, Check, CheckCheck, Clock, Lock, MoreVertical, Send, Smile, TriangleAlert, X } from "lucide-react";
+import EmojiPicker, { EmojiStyle, Theme } from "emoji-picker-react";
+
+type MsgStatus = "sending" | "sent" | "delivered" | "failed";
+type UIMessage = DecryptedMessage & { status?: MsgStatus; tempId?: string };
 
 function formatTime(iso: string) {
   const d = new Date(iso);
@@ -26,23 +30,38 @@ function initials(name?: string) {
   return (parts[0]?.[0] ?? "?").toUpperCase() + (parts[1]?.[0]?.toUpperCase() ?? "");
 }
 
+function StatusTick({ status }: { status?: MsgStatus }) {
+  if (!status) return null;
+  if (status === "sending") return <Clock className="h-3 w-3 opacity-70" />;
+  if (status === "failed")
+    return <TriangleAlert className="h-3 w-3 text-red-400" />;
+  if (status === "sent") return <Check className="h-3 w-3 opacity-70" />;
+  // delivered
+  return <CheckCheck className="h-3 w-3 text-sky-300" />;
+}
+
 export function ChatRoom({ room, onBack }: { room: Room; onBack?: () => void }) {
   const { profile, keyPair } = useAuth();
   const [members, setMembers] = useState<
     { user_id: string; username: string; public_key: string }[]
   >([]);
   const [roomKey, setRoomKey] = useState<Uint8Array | null>(null);
-  const [messages, setMessages] = useState<DecryptedMessage[]>([]);
+  const [messages, setMessages] = useState<UIMessage[]>([]);
   const [text, setText] = useState("");
   const [sending, setSending] = useState(false);
   const [err, setErr] = useState<string | null>(null);
+  const [emojiOpen, setEmojiOpen] = useState(false);
+  const [dragX, setDragX] = useState(0);
+  const [dragging, setDragging] = useState(false);
   const scrollerRef = useRef<HTMLDivElement>(null);
+  const inputRef = useRef<HTMLTextAreaElement>(null);
+  const touchStart = useRef<{ x: number; y: number } | null>(null);
 
   const decryptOne = (
     raw: RawMessage,
     mems: typeof members,
     rk: Uint8Array | null
-  ): DecryptedMessage => {
+  ): UIMessage => {
     const sender = mems.find((m) => m.user_id === raw.sender_id);
     let pt: string | null = null;
     if (room.is_group && rk) pt = decryptGroup(raw, rk);
@@ -75,7 +94,12 @@ export function ChatRoom({ room, onBack }: { room: Room; onBack?: () => void }) 
         }
         const raw = await fetchMessages(room.id);
         if (cancelled) return;
-        setMessages(raw.map((r) => decryptOne(r, mems, rk)));
+        setMessages(
+          raw.map((r) => ({
+            ...decryptOne(r, mems, rk),
+            status: r.sender_id === profile.id ? "delivered" : undefined,
+          }))
+        );
       } catch (e: any) {
         setErr(e?.message ?? "Failed to load room");
       }
@@ -101,8 +125,19 @@ export function ChatRoom({ room, onBack }: { room: Room; onBack?: () => void }) 
         (payload) => {
           const raw = payload.new as RawMessage;
           setMessages((prev) => {
-            if (prev.some((m) => m.id === raw.id)) return prev;
-            return [...prev, decryptOne(raw, members, roomKey)];
+            // Already present (sent locally)? just upgrade to delivered.
+            if (prev.some((m) => m.id === raw.id)) {
+              return prev.map((m) =>
+                m.id === raw.id ? { ...m, status: "delivered" as MsgStatus } : m
+              );
+            }
+            return [
+              ...prev,
+              {
+                ...decryptOne(raw, members, roomKey),
+                status: raw.sender_id === profile.id ? "delivered" : undefined,
+              },
+            ];
           });
         }
       )
@@ -122,25 +157,48 @@ export function ChatRoom({ room, onBack }: { room: Room; onBack?: () => void }) 
     if (!profile || !keyPair || !text.trim()) return;
     setSending(true);
     setErr(null);
+    setEmojiOpen(false);
     const body = text.trim();
     setText("");
+    const tempId = `tmp_${Date.now()}_${Math.random().toString(36).slice(2)}`;
+    const optimistic: UIMessage = {
+      id: tempId,
+      tempId,
+      room_id: room.id,
+      sender_id: profile.id,
+      sender_username: profile.username,
+      created_at: new Date().toISOString(),
+      text: body,
+      status: "sending",
+    };
+    setMessages((prev) => [...prev, optimistic]);
     try {
+      let saved: RawMessage;
       if (room.is_group) {
         if (!roomKey) throw new Error("No room key");
-        await sendGroupMessage(room.id, body, profile.id, roomKey);
+        saved = await sendGroupMessage(room.id, body, profile.id, roomKey);
       } else {
         const other = members.find((m) => m.user_id !== profile.id);
         if (!other) throw new Error("Recipient not found");
-        await sendDirectMessage(
+        saved = await sendDirectMessage(
           room.id,
           body,
           { id: profile.id, keyPair },
           { public_key: other.public_key }
         );
       }
+      setMessages((prev) =>
+        prev.map((m) =>
+          m.tempId === tempId
+            ? { ...m, id: saved.id, created_at: saved.created_at, status: "sent" }
+            : m
+        )
+      );
     } catch (e: any) {
       setErr(e?.message ?? "Failed to send");
-      setText(body);
+      setMessages((prev) =>
+        prev.map((m) => (m.tempId === tempId ? { ...m, status: "failed" } : m))
+      );
     } finally {
       setSending(false);
     }
@@ -148,8 +206,47 @@ export function ChatRoom({ room, onBack }: { room: Room; onBack?: () => void }) 
 
   const title = room.display_name ?? "Chat";
 
+  // Swipe-back handlers (mobile only)
+  const onTouchStart = (e: React.TouchEvent) => {
+    if (!onBack) return;
+    const t = e.touches[0];
+    // Only start if swipe begins near left edge
+    if (t.clientX > 40) return;
+    touchStart.current = { x: t.clientX, y: t.clientY };
+    setDragging(true);
+  };
+  const onTouchMove = (e: React.TouchEvent) => {
+    if (!touchStart.current) return;
+    const dx = e.touches[0].clientX - touchStart.current.x;
+    const dy = e.touches[0].clientY - touchStart.current.y;
+    if (Math.abs(dy) > Math.abs(dx)) {
+      touchStart.current = null;
+      setDragging(false);
+      setDragX(0);
+      return;
+    }
+    if (dx > 0) setDragX(Math.min(dx, 240));
+  };
+  const onTouchEnd = () => {
+    if (!touchStart.current) return;
+    const shouldClose = dragX > 90;
+    touchStart.current = null;
+    setDragging(false);
+    setDragX(0);
+    if (shouldClose) onBack?.();
+  };
+
   return (
-    <div className="flex h-full min-h-0 flex-1 flex-col">
+    <div
+      className="flex h-full min-h-0 flex-1 flex-col"
+      style={{
+        transform: dragX ? `translateX(${dragX}px)` : undefined,
+        transition: dragging ? "none" : "transform 200ms ease",
+      }}
+      onTouchStart={onTouchStart}
+      onTouchMove={onTouchMove}
+      onTouchEnd={onTouchEnd}
+    >
       {/* Header */}
       <header className="flex items-center gap-2 bg-[var(--header-bg)] px-2 py-2 md:px-4">
         {onBack && (
@@ -204,11 +301,7 @@ export function ChatRoom({ room, onBack }: { room: Room; onBack?: () => void }) 
                       ? "bg-[var(--bubble-mine)] text-[var(--bubble-mine-fg)]"
                       : "bg-[var(--bubble-theirs)] text-[var(--bubble-theirs-fg)]"
                   } ${
-                    tail
-                      ? mine
-                        ? "rounded-tr-sm"
-                        : "rounded-tl-sm"
-                      : ""
+                    tail ? (mine ? "rounded-tr-sm" : "rounded-tl-sm") : ""
                   }`}
                   style={{ minWidth: 64 }}
                 >
@@ -220,14 +313,17 @@ export function ChatRoom({ room, onBack }: { room: Room; onBack?: () => void }) 
                   {m.failed ? (
                     <span className="italic opacity-70">Unable to decrypt</span>
                   ) : (
-                    <span className="whitespace-pre-wrap break-words pr-12">{m.text}</span>
+                    <span className={`whitespace-pre-wrap break-words ${mine ? "pr-16" : "pr-12"}`}>
+                      {m.text}
+                    </span>
                   )}
                   <span
-                    className={`pointer-events-none absolute bottom-1 right-2 text-[10px] ${
-                      mine ? "text-white/60" : "text-muted-foreground"
+                    className={`pointer-events-none absolute bottom-1 right-2 flex items-center gap-1 text-[10px] ${
+                      mine ? "text-white/70" : "text-muted-foreground"
                     }`}
                   >
                     {formatTime(m.created_at)}
+                    {mine && <StatusTick status={m.status} />}
                   </span>
                 </div>
               </div>
@@ -238,6 +334,38 @@ export function ChatRoom({ room, onBack }: { room: Room; onBack?: () => void }) 
 
       {err && <div className="bg-destructive/10 px-4 py-2 text-sm text-destructive">{err}</div>}
 
+      {/* Emoji picker */}
+      {emojiOpen && (
+        <div className="relative">
+          <div className="absolute bottom-0 left-0 right-0 z-30 border-t border-border bg-[var(--header-bg)]">
+            <div className="flex items-center justify-between px-3 py-1.5">
+              <span className="text-xs text-muted-foreground">Emoji</span>
+              <button
+                onClick={() => setEmojiOpen(false)}
+                className="rounded-full p-1.5 text-muted-foreground hover:bg-accent hover:text-foreground"
+                aria-label="Close emoji picker"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+            <EmojiPicker
+              onEmojiClick={(d) => {
+                setText((t) => t + d.emoji);
+                inputRef.current?.focus();
+              }}
+              theme={Theme.DARK}
+              emojiStyle={EmojiStyle.NATIVE}
+              width="100%"
+              height={340}
+              lazyLoadEmojis
+              previewConfig={{ showPreview: false }}
+              searchDisabled={false}
+              skinTonesDisabled
+            />
+          </div>
+        </div>
+      )}
+
       {/* Composer */}
       <form
         onSubmit={send}
@@ -246,14 +374,19 @@ export function ChatRoom({ room, onBack }: { room: Room; onBack?: () => void }) 
       >
         <button
           type="button"
-          className="flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-full text-muted-foreground hover:bg-accent hover:text-foreground"
+          onClick={() => setEmojiOpen((s) => !s)}
+          className={`flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-full hover:bg-accent ${
+            emojiOpen ? "text-primary" : "text-muted-foreground hover:text-foreground"
+          }`}
           aria-label="Emoji"
         >
           <Smile className="h-6 w-6" />
         </button>
         <textarea
+          ref={inputRef}
           value={text}
           onChange={(e) => setText(e.target.value)}
+          onFocus={() => setEmojiOpen(false)}
           onKeyDown={(e) => {
             if (e.key === "Enter" && !e.shiftKey) {
               e.preventDefault();
