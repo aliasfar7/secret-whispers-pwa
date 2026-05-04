@@ -2,11 +2,12 @@ import { useAuth } from "@/lib/auth";
 import { supabaseConfigured } from "@/lib/supabase";
 import { LoginScreen } from "./LoginScreen";
 import { UsernameScreen } from "./UsernameScreen";
+import { BackupPhraseScreen } from "./BackupPhraseScreen";
 import { ChatShell } from "./ChatShell";
 import { Lock } from "lucide-react";
 
 export function App() {
-  const { session, profile, loading, needsUsername } = useAuth();
+  const { session, profile, loading, needsUsername, pendingBackupPhrase } = useAuth();
 
   if (!supabaseConfigured) {
     return (
@@ -34,6 +35,7 @@ export function App() {
   }
 
   if (!session) return <LoginScreen />;
+  if (pendingBackupPhrase) return <BackupPhraseScreen />;
   if (needsUsername || !profile) return <UsernameScreen />;
   return <ChatShell />;
 }

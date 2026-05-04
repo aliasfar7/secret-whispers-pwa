@@ -10,6 +10,7 @@ import {
 import { Sidebar } from "./Sidebar";
 import { ChatRoom } from "./ChatRoom";
 import { NewChatModal } from "./NewChatModal";
+import { RecoveryPhraseDialog } from "./RecoveryPhraseDialog";
 import { MessageSquarePlus, MoreVertical, Search } from "lucide-react";
 
 export function ChatShell() {
@@ -18,6 +19,7 @@ export function ChatShell() {
   const [activeId, setActiveId] = useState<string | null>(null);
   const [modalOpen, setModalOpen] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
+  const [recoveryOpen, setRecoveryOpen] = useState(false);
   const [loading, setLoading] = useState(true);
 
   const reload = async () => {
@@ -120,6 +122,12 @@ export function ChatShell() {
                   @{profile?.username}
                 </div>
                 <button
+                  onClick={() => setRecoveryOpen(true)}
+                  className="block w-full px-3 py-2.5 text-left text-sm hover:bg-accent"
+                >
+                  Recovery phrase
+                </button>
+                <button
                   onClick={signOut}
                   className="block w-full px-3 py-2.5 text-left text-sm hover:bg-accent"
                 >
@@ -178,6 +186,8 @@ export function ChatShell() {
           }}
         />
       )}
+
+      {recoveryOpen && <RecoveryPhraseDialog onClose={() => setRecoveryOpen(false)} />}
     </div>
   );
 }
