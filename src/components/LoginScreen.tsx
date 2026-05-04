@@ -1,23 +1,19 @@
 import { useState } from "react";
 import { useAuth } from "@/lib/auth";
-import { Lock, Mail } from "lucide-react";
+import { Lock } from "lucide-react";
 
 export function LoginScreen() {
-  const { signInWithMagicLink } = useAuth();
-  const [email, setEmail] = useState("");
-  const [sent, setSent] = useState(false);
+  const { signInAnonymously } = useAuth();
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState<string | null>(null);
 
-  const submit = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const start = async () => {
     setErr(null);
     setLoading(true);
     try {
-      await signInWithMagicLink(email);
-      setSent(true);
+      await signInAnonymously();
     } catch (e: any) {
-      setErr(e?.message ?? "Failed to send link");
+      setErr(e?.message ?? "Failed to start session");
     } finally {
       setLoading(false);
     }
@@ -36,40 +32,22 @@ export function LoginScreen() {
           </p>
         </div>
 
-        {sent ? (
-          <div className="rounded-2xl border border-border bg-card p-6 text-center">
-            <Mail className="mx-auto mb-3 h-8 w-8 text-primary" />
-            <p className="font-medium text-foreground">Check your email</p>
-            <p className="mt-1 text-sm text-muted-foreground">
-              We sent a magic link to <span className="text-foreground">{email}</span>.
-            </p>
-          </div>
-        ) : (
-          <form onSubmit={submit} className="rounded-2xl border border-border bg-card p-6 shadow-xl">
-            <label className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
-              Email
-            </label>
-            <input
-              type="email"
-              required
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              placeholder="you@example.com"
-              className="mt-2 w-full rounded-lg border border-input bg-background px-3 py-2.5 text-foreground outline-none focus:border-primary focus:ring-2 focus:ring-primary/30"
-            />
-            {err && <p className="mt-3 text-sm text-destructive">{err}</p>}
-            <button
-              type="submit"
-              disabled={loading}
-              className="mt-4 w-full rounded-lg bg-primary px-4 py-2.5 font-medium text-primary-foreground transition hover:opacity-90 disabled:opacity-50"
-            >
-              {loading ? "Sending…" : "Send magic link"}
-            </button>
-            <p className="mt-4 text-center text-xs text-muted-foreground">
-              Your private key never leaves this device.
-            </p>
-          </form>
-        )}
+        <div className="rounded-2xl border border-border bg-card p-6 shadow-xl">
+          <p className="text-sm text-muted-foreground">
+            No email, no password. Your identity and private key live only on this device.
+          </p>
+          {err && <p className="mt-3 text-sm text-destructive">{err}</p>}
+          <button
+            onClick={start}
+            disabled={loading}
+            className="mt-4 w-full rounded-lg bg-primary px-4 py-2.5 font-medium text-primary-foreground transition hover:opacity-90 disabled:opacity-50"
+          >
+            {loading ? "Starting…" : "Continue"}
+          </button>
+          <p className="mt-4 text-center text-xs text-muted-foreground">
+            Clearing browser data will erase your account and keys.
+          </p>
+        </div>
       </div>
     </div>
   );
