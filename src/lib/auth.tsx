@@ -64,11 +64,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     })();
   }, [session]);
 
-  const signInWithMagicLink = async (email: string) => {
-    const { error } = await supabase.auth.signInWithOtp({
-      email,
-      options: { emailRedirectTo: window.location.origin },
-    });
+  const signInAnonymously = async () => {
+    const { error } = await supabase.auth.signInAnonymously();
     if (error) throw error;
   };
 
