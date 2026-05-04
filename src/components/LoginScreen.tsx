@@ -89,8 +89,8 @@ export function LoginScreen() {
               I have a recovery phrase
             </button>
           </>
-        ) : (
-          <form onSubmit={restore} className="flex flex-col gap-3">
+        ) : mode === "restore" ? (
+          <form onSubmit={goConfirm} className="flex flex-col gap-3">
             <input
               required
               value={username}
@@ -115,13 +115,49 @@ export function LoginScreen() {
               disabled={loading}
               className="w-full rounded-full bg-primary px-4 py-3.5 text-base font-medium text-primary-foreground active:scale-[0.98] disabled:opacity-50"
             >
-              {loading ? "Restoring…" : "Restore account"}
+              {loading ? "Restoring…" : "Continue"}
             </button>
             <button
               type="button"
               onClick={() => {
                 setErr(null);
                 setMode("start");
+              }}
+              className="w-full rounded-full px-4 py-2.5 text-sm text-muted-foreground hover:text-foreground"
+            >
+              Back
+            </button>
+          </form>
+        ) : (
+          <form onSubmit={restore} className="flex flex-col gap-3">
+            <p className="text-sm text-muted-foreground">
+              Re-enter your 12-word phrase to confirm there are no typos before we
+              claim <span className="text-foreground">@{username}</span>.
+            </p>
+            <textarea
+              required
+              autoFocus
+              value={confirmPhrase}
+              onChange={(e) => setConfirmPhrase(e.target.value)}
+              placeholder="Type your 12 words again"
+              rows={3}
+              autoCapitalize="none"
+              autoCorrect="off"
+              spellCheck={false}
+              className="w-full rounded-2xl border border-input bg-[var(--bubble-theirs)] px-5 py-3 text-foreground outline-none focus:border-primary focus:ring-2 focus:ring-primary/30"
+            />
+            <button
+              type="submit"
+              disabled={loading}
+              className="w-full rounded-full bg-primary px-4 py-3.5 text-base font-medium text-primary-foreground active:scale-[0.98] disabled:opacity-50"
+            >
+              {loading ? "Restoring…" : "Confirm & restore"}
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setErr(null);
+                setMode("restore");
               }}
               className="w-full rounded-full px-4 py-2.5 text-sm text-muted-foreground hover:text-foreground"
             >
