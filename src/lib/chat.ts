@@ -260,19 +260,24 @@ export async function sendDirectMessage(
   text: string,
   me: { id: string; keyPair: KeyPair },
   recipient: { public_key: string }
-) {
+): Promise<RawMessage> {
   const { ciphertext, nonce } = boxEncrypt(
     utf8.enc(text),
     b64.dec(recipient.public_key),
     me.keyPair.secretKey
   );
-  const { error } = await supabase.from("messages").insert({
-    room_id: roomId,
-    sender_id: me.id,
-    encrypted_content: b64.enc(ciphertext),
-    nonce: b64.enc(nonce),
-  });
+  const { data, error } = await supabase
+    .from("messages")
+    .insert({
+      room_id: roomId,
+      sender_id: me.id,
+      encrypted_content: b64.enc(ciphertext),
+      nonce: b64.enc(nonce),
+    })
+    .select()
+    .single();
   if (error) throw error;
+  return data as RawMessage;
 }
 
 export async function sendGroupMessage(
@@ -280,15 +285,20 @@ export async function sendGroupMessage(
   text: string,
   meId: string,
   roomKey: Uint8Array
-) {
+): Promise<RawMessage> {
   const { ciphertext, nonce } = secretEncrypt(utf8.enc(text), roomKey);
-  const { error } = await supabase.from("messages").insert({
-    room_id: roomId,
-    sender_id: meId,
-    encrypted_content: b64.enc(ciphertext),
-    nonce: b64.enc(nonce),
-  });
+  const { data, error } = await supabase
+    .from("messages")
+    .insert({
+      room_id: roomId,
+      sender_id: meId,
+      encrypted_content: b64.enc(ciphertext),
+      nonce: b64.enc(nonce),
+    })
+    .select()
+    .single();
   if (error) throw error;
+  return data as RawMessage;
 }
 
 export function decryptDirect(
