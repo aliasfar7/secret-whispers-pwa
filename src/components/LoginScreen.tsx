@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useAuth } from "@/lib/auth";
-import { Lock } from "lucide-react";
+import { Lock, MessageCircle } from "lucide-react";
 
 export function LoginScreen() {
   const { signInAnonymously } = useAuth();
@@ -20,34 +20,30 @@ export function LoginScreen() {
   };
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-background p-6">
+    <div className="flex min-h-[100dvh] flex-col items-center justify-between bg-background px-6 py-10">
+      <div />
+      <div className="flex flex-col items-center text-center">
+        <div className="mb-5 flex h-20 w-20 items-center justify-center rounded-full bg-primary/15 ring-1 ring-primary/30">
+          <MessageCircle className="h-10 w-10 text-primary" />
+        </div>
+        <h1 className="text-2xl font-semibold tracking-tight">Welcome to Cipher</h1>
+        <p className="mt-3 max-w-xs text-sm text-muted-foreground">
+          Private messaging with end-to-end encryption. No email, no password — your
+          identity and keys live only on this device.
+        </p>
+      </div>
       <div className="w-full max-w-sm">
-        <div className="mb-8 flex flex-col items-center gap-3 text-center">
-          <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-primary/15 ring-1 ring-primary/30">
-            <Lock className="h-7 w-7 text-primary" />
-          </div>
-          <h1 className="text-3xl font-semibold tracking-tight text-foreground">Cipher</h1>
-          <p className="text-sm text-muted-foreground">
-            Zero-knowledge end-to-end encrypted messaging.
-          </p>
-        </div>
-
-        <div className="rounded-2xl border border-border bg-card p-6 shadow-xl">
-          <p className="text-sm text-muted-foreground">
-            No email, no password. Your identity and private key live only on this device.
-          </p>
-          {err && <p className="mt-3 text-sm text-destructive">{err}</p>}
-          <button
-            onClick={start}
-            disabled={loading}
-            className="mt-4 w-full rounded-lg bg-primary px-4 py-2.5 font-medium text-primary-foreground transition hover:opacity-90 disabled:opacity-50"
-          >
-            {loading ? "Starting…" : "Continue"}
-          </button>
-          <p className="mt-4 text-center text-xs text-muted-foreground">
-            Clearing browser data will erase your account and keys.
-          </p>
-        </div>
+        {err && <p className="mb-3 text-center text-sm text-destructive">{err}</p>}
+        <button
+          onClick={start}
+          disabled={loading}
+          className="w-full rounded-full bg-primary px-4 py-3.5 text-base font-medium text-primary-foreground transition active:scale-[0.98] disabled:opacity-50"
+        >
+          {loading ? "Starting…" : "Continue"}
+        </button>
+        <p className="mt-4 flex items-center justify-center gap-1.5 text-center text-xs text-muted-foreground">
+          <Lock className="h-3 w-3" /> Clearing browser data will erase your account.
+        </p>
       </div>
     </div>
   );

@@ -10,27 +10,25 @@ import {
 import { Sidebar } from "./Sidebar";
 import { ChatRoom } from "./ChatRoom";
 import { NewChatModal } from "./NewChatModal";
-import { Lock, Plus, Menu } from "lucide-react";
+import { MessageSquarePlus, MoreVertical, Search } from "lucide-react";
 
 export function ChatShell() {
   const { profile, keyPair, signOut } = useAuth();
   const [rooms, setRooms] = useState<Room[]>([]);
   const [activeId, setActiveId] = useState<string | null>(null);
   const [modalOpen, setModalOpen] = useState(false);
-  const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [menuOpen, setMenuOpen] = useState(false);
   const [loading, setLoading] = useState(true);
 
   const reload = async () => {
     if (!profile || !keyPair) return;
     const list = await listRoomsForUser(profile.id);
-    // Hydrate display names
     const hydrated = await Promise.all(
       list.map(async (r) => {
         if (r.is_group && r.name) {
           const key = await getMyRoomKey(r.id, { id: profile.id, keyPair });
           r.display_name = key ? decryptRoomName(r.name, key) : "Encrypted group";
         } else if (!r.is_group) {
-          // Fetch the other member's username
           const { data } = await supabase
             .from("room_members")
             .select("user_id")
@@ -58,7 +56,6 @@ export function ChatShell() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [profile?.id]);
 
-  // Subscribe to membership changes (new rooms added)
   useEffect(() => {
     if (!profile) return;
     const ch = supabase
@@ -80,72 +77,91 @@ export function ChatShell() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [profile?.id]);
 
-  const activeRoom = useMemo(() => rooms.find((r) => r.id === activeId), [rooms, activeId]);
+  const activeRoom = useMemo(
+    () => rooms.find((r) => r.id === activeId),
+    [rooms, activeId]
+  );
 
   return (
-    <div className="flex h-screen w-screen overflow-hidden bg-background text-foreground">
-      {/* Sidebar */}
+    <div className="flex h-[100dvh] w-full overflow-hidden bg-background text-foreground">
+      {/* Chat list — full screen on mobile, fixed pane on md+ */}
       <aside
-        className={`absolute z-20 h-full w-80 transform border-r border-border bg-sidebar transition-transform md:static md:translate-x-0 ${
-          sidebarOpen ? "translate-x-0" : "-translate-x-full"
+        className={`flex h-full w-full flex-col border-r border-border bg-sidebar md:w-[360px] lg:w-[400px] ${
+          activeRoom ? "hidden md:flex" : "flex"
         }`}
       >
-        <header className="flex items-center justify-between border-b border-border px-4 py-3">
-          <div className="flex items-center gap-2">
-            <Lock className="h-5 w-5 text-primary" />
-            <span className="font-semibold">Cipher</span>
+        <header className="flex items-center justify-between bg-[var(--header-bg)] px-4 py-3">
+          <div className="flex items-center gap-3">
+            <div className="flex h-9 w-9 items-center justify-center rounded-full bg-primary/25 text-sm font-semibold text-primary">
+              {profile?.username?.[0]?.toUpperCase() ?? "?"}
+            </div>
+            <span className="text-base font-medium">Chats</span>
           </div>
-          <button
-            onClick={() => setModalOpen(true)}
-            className="rounded-lg bg-primary/15 p-2 text-primary hover:bg-primary/25"
-            aria-label="New chat"
-          >
-            <Plus className="h-4 w-4" />
-          </button>
+          <div className="relative flex items-center gap-1">
+            <button
+              className="rounded-full p-2 text-muted-foreground hover:bg-accent hover:text-foreground"
+              aria-label="Search"
+            >
+              <Search className="h-5 w-5" />
+            </button>
+            <button
+              onClick={() => setMenuOpen((s) => !s)}
+              className="rounded-full p-2 text-muted-foreground hover:bg-accent hover:text-foreground"
+              aria-label="Menu"
+            >
+              <MoreVertical className="h-5 w-5" />
+            </button>
+            {menuOpen && (
+              <div
+                className="absolute right-0 top-12 z-30 w-44 overflow-hidden rounded-md border border-border bg-popover shadow-lg"
+                onClick={() => setMenuOpen(false)}
+              >
+                <div className="border-b border-border px-3 py-2 text-xs text-muted-foreground">
+                  @{profile?.username}
+                </div>
+                <button
+                  onClick={signOut}
+                  className="block w-full px-3 py-2.5 text-left text-sm hover:bg-accent"
+                >
+                  Sign out
+                </button>
+              </div>
+            )}
+          </div>
         </header>
-        <div className="px-4 py-3 text-xs text-muted-foreground">
-          Signed in as <span className="text-foreground">@{profile?.username}</span>
-        </div>
+
         <Sidebar
           rooms={rooms}
           loading={loading}
           activeId={activeId}
-          onSelect={(id) => {
-            setActiveId(id);
-            setSidebarOpen(false);
-          }}
+          onSelect={(id) => setActiveId(id)}
         />
-        <div className="border-t border-border p-3">
-          <button
-            onClick={signOut}
-            className="w-full rounded-lg px-3 py-2 text-sm text-muted-foreground hover:bg-accent hover:text-foreground"
-          >
-            Sign out
-          </button>
-        </div>
+
+        <button
+          onClick={() => setModalOpen(true)}
+          className="absolute bottom-5 right-5 z-20 flex h-14 w-14 items-center justify-center rounded-full bg-primary text-primary-foreground shadow-lg shadow-primary/30 transition active:scale-95 md:bottom-6 md:right-auto md:left-[calc(360px-72px)] lg:left-[calc(400px-72px)]"
+          aria-label="New chat"
+        >
+          <MessageSquarePlus className="h-6 w-6" />
+        </button>
       </aside>
 
-      {/* Main */}
-      <main className="flex flex-1 flex-col">
-        <div className="flex items-center gap-2 border-b border-border bg-card/40 px-3 py-2 md:hidden">
-          <button
-            onClick={() => setSidebarOpen((s) => !s)}
-            className="rounded-md p-2 hover:bg-accent"
-          >
-            <Menu className="h-5 w-5" />
-          </button>
-          <span className="text-sm font-medium">{activeRoom?.display_name ?? "Cipher"}</span>
-        </div>
-
+      {/* Conversation pane */}
+      <main
+        className={`h-full flex-1 ${activeRoom ? "flex" : "hidden md:flex"} flex-col`}
+      >
         {activeRoom ? (
-          <ChatRoom room={activeRoom} key={activeRoom.id} />
+          <ChatRoom
+            room={activeRoom}
+            key={activeRoom.id}
+            onBack={() => setActiveId(null)}
+          />
         ) : (
-          <div className="flex flex-1 items-center justify-center p-6 text-center">
-            <div>
-              <Lock className="mx-auto mb-3 h-10 w-10 text-muted-foreground" />
-              <p className="text-foreground">Select a conversation</p>
-              <p className="mt-1 text-sm text-muted-foreground">
-                Or start a new one with the + button.
+          <div className="chat-doodle flex flex-1 items-center justify-center p-6 text-center">
+            <div className="max-w-xs">
+              <p className="text-foreground">Select a chat to start messaging</p>
+              <p className="mt-2 text-sm text-muted-foreground">
+                Your messages are end-to-end encrypted.
               </p>
             </div>
           </div>
