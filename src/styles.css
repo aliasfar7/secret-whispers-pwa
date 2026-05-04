@@ -62,9 +62,14 @@
 }
 
 :root {
-  --radius: 0.625rem;
-  --background: oklch(1 0 0);
-  --foreground: oklch(0.129 0.042 264.695);
+  color-scheme: dark;
+  --radius: 0.75rem;
+  --background: oklch(0.18 0.02 260);
+  --foreground: oklch(0.97 0.01 260);
+  --bubble-mine: oklch(0.62 0.17 250);
+  --bubble-mine-fg: oklch(0.99 0 0);
+  --bubble-theirs: oklch(0.28 0.02 260);
+  --bubble-theirs-fg: oklch(0.97 0.01 260);
   --card: oklch(1 0 0);
   --card-foreground: oklch(0.129 0.042 264.695);
   --popover: oklch(1 0 0);
