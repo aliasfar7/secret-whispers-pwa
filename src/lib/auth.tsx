@@ -12,7 +12,7 @@ type AuthCtx = {
   keyPair: KeyPair | null;
   loading: boolean;
   needsUsername: boolean;
-  signInWithMagicLink: (email: string) => Promise<void>;
+  signInAnonymously: () => Promise<void>;
   completeProfile: (username: string) => Promise<void>;
   signOut: () => Promise<void>;
 };
