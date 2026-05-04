@@ -58,7 +58,7 @@ export function BackupPhraseScreen() {
 
         <label
           className={`mt-6 flex items-start gap-3 text-sm ${
-            copied ? "text-foreground" : "text-muted-foreground"
+            hasCopied ? "text-foreground" : "text-muted-foreground"
           }`}
         >
           <input
