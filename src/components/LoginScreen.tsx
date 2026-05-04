@@ -1,16 +1,17 @@
 import { useState } from "react";
 import { useAuth } from "@/lib/auth";
-import { isValidPhrase } from "@/lib/recovery";
+import { isValidPhrase, normalizePhrase } from "@/lib/recovery";
 import { Lock, MessageCircle } from "lucide-react";
 
 export function LoginScreen() {
   const { signInAnonymously, restoreFromPhrase } = useAuth();
-  const [mode, setMode] = useState<"start" | "restore">("start");
+  const [mode, setMode] = useState<"start" | "restore" | "confirm">("start");
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState<string | null>(null);
 
   const [username, setUsername] = useState("");
   const [phrase, setPhrase] = useState("");
+  const [confirmPhrase, setConfirmPhrase] = useState("");
 
   const start = async () => {
     setErr(null);
@@ -24,11 +25,22 @@ export function LoginScreen() {
     }
   };
 
-  const restore = async (e: React.FormEvent) => {
+  const goConfirm = (e: React.FormEvent) => {
     e.preventDefault();
     setErr(null);
     if (!isValidPhrase(phrase)) {
       setErr("That doesn't look like a valid 12-word recovery phrase.");
+      return;
+    }
+    setConfirmPhrase("");
+    setMode("confirm");
+  };
+
+  const restore = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setErr(null);
+    if (normalizePhrase(confirmPhrase) !== normalizePhrase(phrase)) {
+      setErr("The two phrases don't match. Check for typos.");
       return;
     }
     setLoading(true);
