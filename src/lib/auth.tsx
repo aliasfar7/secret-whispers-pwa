@@ -70,13 +70,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         // Auth session exists but local key vault was wiped — force restore.
         await supabase.auth.signOut();
       } else {
-        // No profile yet — generate fresh identity + recovery phrase.
+        // No profile yet — ensure we have an identity + recovery phrase to show.
         if (!stored) {
           const { keyPair: kp, phrase } = await createNewIdentity(authId);
           setKeyPair(kp);
           setPendingBackupPhrase(phrase);
         } else {
           setKeyPair(stored.keyPair);
+          if (stored.phrase) setPendingBackupPhrase(stored.phrase);
         }
         setNeedsUsername(true);
       }
