@@ -160,13 +160,6 @@ export async function getOrCreateDirectRoom(
   const existing = await findDirectRoom(me.id, other.id);
   if (existing) return existing;
 
-  const { data: room, error } = await supabase
-    .from("rooms")
-    .insert({ is_group: false, name: null })
-    .select()
-    .single();
-  if (error) throw error;
-
   // Seal a placeholder "room key" (random bytes) for both members so the
   // membership row schema is satisfied; not used to decrypt 1:1 messages.
   const placeholder = newRoomKey();
@@ -175,24 +168,28 @@ export async function getOrCreateDirectRoom(
   const sealForMe = boxEncrypt(placeholder, me.keyPair.publicKey, me.keyPair.secretKey);
   const sealForOther = boxEncrypt(placeholder, otherPub, me.keyPair.secretKey);
 
-  const { error: e2 } = await supabase.from("room_members").insert([
+  const members = [
     {
-      room_id: room.id,
       user_id: me.id,
       encrypted_room_key: b64.enc(sealForMe.ciphertext),
       ek_nonce: b64.enc(sealForMe.nonce),
       ek_sender_key: b64.enc(me.keyPair.publicKey),
     },
     {
-      room_id: room.id,
       user_id: other.id,
       encrypted_room_key: b64.enc(sealForOther.ciphertext),
       ek_nonce: b64.enc(sealForOther.nonce),
       ek_sender_key: b64.enc(me.keyPair.publicKey),
     },
-  ]);
-  if (e2) throw e2;
-  return room.id;
+  ];
+
+  const { data, error } = await supabase.rpc("create_room_with_members", {
+    _is_group: false,
+    _name: null,
+    _members: members,
+  });
+  if (error) throw error;
+  return data as string;
 }
 
 export async function createGroupRoom(
@@ -206,13 +203,6 @@ export async function createGroupRoom(
   const enc = secretEncrypt(utf8.enc(name), roomKey);
   const encryptedName = `${b64.enc(enc.ciphertext)}.${b64.enc(enc.nonce)}`;
 
-  const { data: room, error } = await supabase
-    .from("rooms")
-    .insert({ is_group: true, name: encryptedName })
-    .select()
-    .single();
-  if (error) throw error;
-
   const all = [
     { id: me.id, public_key: b64.enc(me.keyPair.publicKey) },
     ...members.filter((m) => m.id !== me.id),
@@ -221,7 +211,6 @@ export async function createGroupRoom(
   const rows = all.map((m) => {
     const sealed = boxEncrypt(roomKey, b64.dec(m.public_key), me.keyPair.secretKey);
     return {
-      room_id: room.id,
       user_id: m.id,
       encrypted_room_key: b64.enc(sealed.ciphertext),
       ek_nonce: b64.enc(sealed.nonce),
@@ -229,9 +218,13 @@ export async function createGroupRoom(
     };
   });
 
-  const { error: e2 } = await supabase.from("room_members").insert(rows);
-  if (e2) throw e2;
-  return room.id;
+  const { data, error } = await supabase.rpc("create_room_with_members", {
+    _is_group: true,
+    _name: encryptedName,
+    _members: rows,
+  });
+  if (error) throw error;
+  return data as string;
 }
 
 export function decryptRoomName(encrypted: string, key: Uint8Array): string {
