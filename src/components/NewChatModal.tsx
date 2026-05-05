@@ -1,11 +1,13 @@
 import { useEffect, useState } from "react";
+import { toast } from "sonner";
 import { useAuth } from "@/lib/auth";
 import {
   createGroupRoom,
   getOrCreateDirectRoom,
   searchUsers,
 } from "@/lib/chat";
-import { X, Users, User as UserIcon, Search } from "lucide-react";
+import { friendlyError } from "@/lib/errors";
+import { X, Users, User as UserIcon, Search, AlertTriangle } from "lucide-react";
 
 type Found = { id: string; username: string; public_key: string };
 
@@ -36,7 +38,9 @@ export function NewChatModal({
         const r = await searchUsers(query, profile.id);
         setResults(r);
       } catch (e: any) {
-        setErr(e?.message ?? "Search failed");
+        const m = friendlyError(e, "Search failed");
+        setErr(m);
+        toast.error(m);
       }
     }, 200);
     return () => clearTimeout(t);
@@ -52,8 +56,13 @@ export function NewChatModal({
         { id: u.id, public_key: u.public_key }
       );
       onCreated(id);
+      toast.success(`Started chat with @${u.username}`);
     } catch (e: any) {
-      setErr(e?.message ?? "Failed to create chat");
+      const m = friendlyError(e, "Failed to create chat");
+      setErr(m);
+      toast.error(m, {
+        description: e?.code === "42501" ? "Permission denied by the server." : undefined,
+      });
       setBusy(false);
     }
   };
@@ -67,7 +76,9 @@ export function NewChatModal({
   const createGroup = async () => {
     if (!profile || !keyPair) return;
     if (!groupName.trim() || selected.length === 0) {
-      setErr("Pick a name and at least one member");
+      const m = "Pick a name and at least one member";
+      setErr(m);
+      toast.error(m);
       return;
     }
     setBusy(true);
@@ -79,8 +90,13 @@ export function NewChatModal({
         selected.map((s) => ({ id: s.id, public_key: s.public_key }))
       );
       onCreated(id);
+      toast.success(`Group "${groupName.trim()}" created`);
     } catch (e: any) {
-      setErr(e?.message ?? "Failed to create group");
+      const m = friendlyError(e, "Failed to create group");
+      setErr(m);
+      toast.error(m, {
+        description: e?.code === "42501" ? "Permission denied by the server." : undefined,
+      });
       setBusy(false);
     }
   };
@@ -183,7 +199,12 @@ export function NewChatModal({
             })}
           </ul>
 
-          {err && <p className="text-sm text-destructive">{err}</p>}
+          {err && (
+            <div className="flex items-start gap-2 rounded-lg border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+              <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
+              <span>{err}</span>
+            </div>
+          )}
 
           {mode === "group" && (
             <button
