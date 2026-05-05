@@ -5,6 +5,10 @@
 alter table public.users
   drop constraint if exists users_id_fkey;
 
+-- Ensure id can be generated independently of auth.users.
+alter table public.users
+  alter column id set default gen_random_uuid();
+
 -- 2) Add link to current auth session.
 alter table public.users
   add column if not exists auth_user_id uuid unique references auth.users(id) on delete set null;
