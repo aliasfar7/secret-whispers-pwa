@@ -91,6 +91,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const completeProfile = async (username: string) => {
     if (!session || !keyPair) throw new Error("No session");
     const row = {
+      id: crypto.randomUUID(),
       username: username.trim(),
       public_key: b64.enc(keyPair.publicKey),
       auth_user_id: session.user.id,
