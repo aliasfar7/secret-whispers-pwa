@@ -1,11 +1,13 @@
 import { useEffect, useState } from "react";
+import { toast } from "sonner";
 import { useAuth } from "@/lib/auth";
 import {
   createGroupRoom,
   getOrCreateDirectRoom,
   searchUsers,
 } from "@/lib/chat";
-import { X, Users, User as UserIcon, Search } from "lucide-react";
+import { friendlyError } from "@/lib/errors";
+import { X, Users, User as UserIcon, Search, AlertTriangle } from "lucide-react";
 
 type Found = { id: string; username: string; public_key: string };
 
