@@ -101,7 +101,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       .insert(row)
       .select("id, username, public_key")
       .single();
-    if (error) throw error;
+    if (error) {
+      if (error.code === "23505") {
+        throw new Error("That username is already taken. Please pick another.");
+      }
+      throw error;
+    }
     setProfile(data as Profile);
     setNeedsUsername(false);
   };
