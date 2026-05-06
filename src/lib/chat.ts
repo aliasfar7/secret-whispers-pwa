@@ -31,6 +31,14 @@ export type DecryptedMessage = {
   failed?: boolean;
 };
 
+type MessageDecryptContext = {
+  isGroup: boolean;
+  me: KeyPair | null;
+  myUserId?: string;
+  members: { user_id: string; username?: string; public_key: string }[];
+  roomKey: Uint8Array | null;
+};
+
 export type RawMessage = {
   id: string;
   room_id: string;
@@ -323,4 +331,28 @@ export function decryptDirect(
 export function decryptGroup(raw: RawMessage, roomKey: Uint8Array): string | null {
   const pt = secretDecrypt(b64.dec(raw.encrypted_content), b64.dec(raw.nonce), roomKey);
   return pt ? utf8.dec(pt) : null;
+}
+
+export function decryptMessageForRoom(
+  raw: RawMessage,
+  ctx: MessageDecryptContext
+): DecryptedMessage {
+  const sender = ctx.members.find((m) => m.user_id === raw.sender_id);
+
+  let text: string | null | undefined;
+  if (ctx.isGroup) {
+    text = ctx.roomKey ? decryptGroup(raw, ctx.roomKey) : undefined;
+  } else if (ctx.me && ctx.myUserId && ctx.members.length >= 2) {
+    text = decryptDirect(raw, ctx.me, ctx.members, ctx.myUserId);
+  }
+
+  return {
+    id: raw.id,
+    room_id: raw.room_id,
+    sender_id: raw.sender_id,
+    sender_username: sender?.username,
+    created_at: raw.created_at,
+    text: typeof text === "string" ? text : "",
+    failed: text === null,
+  };
 }
