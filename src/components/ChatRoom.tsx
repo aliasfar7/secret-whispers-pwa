@@ -275,9 +275,7 @@ export function ChatRoom({ room, onBack }: { room: Room; onBack?: () => void }) 
               No messages yet. Say hi 👋
             </div>
           )}
-          {messages
-            .filter((m) => !m.failed)
-            .map((m, i, arr) => {
+          {messages.map((m, i, arr) => {
             const mine = m.sender_id === profile?.id;
             const prev = arr[i - 1];
             const showName = room.is_group && !mine && prev?.sender_id !== m.sender_id;
