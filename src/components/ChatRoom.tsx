@@ -311,28 +311,37 @@ export function ChatRoom({ room, onBack }: { room: Room; onBack?: () => void }) 
                     </div>
                   )}
                   {m.failed ? (
-                    <span className="inline-flex items-center gap-1 italic text-red-300/90">
-                      <ShieldAlert className="h-3.5 w-3.5" />
-                      Unable to decrypt on this device
-                    </span>
+                    <div className="flex flex-col gap-1">
+                      <span className="inline-flex items-center gap-1 italic text-red-300/90">
+                        <ShieldAlert className="h-3.5 w-3.5 flex-shrink-0" />
+                        Unable to decrypt on this device
+                      </span>
+                      <span
+                        className={`flex items-center gap-1 self-end text-[10px] ${
+                          mine ? "text-white/70" : "text-muted-foreground"
+                        }`}
+                      >
+                        <LockOpen className="h-3 w-3 text-red-300" aria-label="Decryption failed" />
+                        {formatTime(m.created_at)}
+                        {mine && <StatusTick status={m.status} />}
+                      </span>
+                    </div>
                   ) : (
-                    <span className={`whitespace-pre-wrap break-words ${mine ? "pr-20" : "pr-16"}`}>
-                      {m.text}
-                    </span>
+                    <>
+                      <span className={`whitespace-pre-wrap break-words ${mine ? "pr-20" : "pr-16"}`}>
+                        {m.text}
+                      </span>
+                      <span
+                        className={`pointer-events-none absolute bottom-1 right-2 flex items-center gap-1 text-[10px] ${
+                          mine ? "text-white/70" : "text-muted-foreground"
+                        }`}
+                      >
+                        <ShieldCheck className="h-3 w-3 text-emerald-300" aria-label="Decrypted locally" />
+                        {formatTime(m.created_at)}
+                        {mine && <StatusTick status={m.status} />}
+                      </span>
+                    </>
                   )}
-                  <span
-                    className={`pointer-events-none absolute bottom-1 right-2 flex items-center gap-1 text-[10px] ${
-                      mine ? "text-white/70" : "text-muted-foreground"
-                    }`}
-                  >
-                    {m.failed ? (
-                      <LockOpen className="h-3 w-3 text-red-300" aria-label="Decryption failed" />
-                    ) : (
-                      <ShieldCheck className="h-3 w-3 text-emerald-300" aria-label="Decrypted locally" />
-                    )}
-                    {formatTime(m.created_at)}
-                    {mine && <StatusTick status={m.status} />}
-                  </span>
                 </div>
               </div>
             );
