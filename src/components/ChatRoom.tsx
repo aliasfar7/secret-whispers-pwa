@@ -86,7 +86,7 @@ export function ChatRoom({ room, onBack }: { room: Room; onBack?: () => void }) 
         setMessages(
           raw.map((r) => ({
             ...decryptOne(r, mems, rk),
-            status: r.sender_id === profile.id ? "delivered" : undefined,
+            status: r.sender_id === profile.id ? "sent" : undefined,
           }))
         );
       } catch (e: any) {
@@ -113,17 +113,15 @@ export function ChatRoom({ room, onBack }: { room: Room; onBack?: () => void }) 
         (payload) => {
           const raw = payload.new as RawMessage;
           setMessages((prev) => {
-            // Already present (sent locally)? just upgrade to delivered.
-            if (prev.some((m) => m.id === raw.id)) {
-              return prev.map((m) =>
-                m.id === raw.id ? { ...m, status: "delivered" as MsgStatus } : m
-              );
-            }
+            // Already present (sent locally)? Server-side echo just confirms
+            // the row was persisted — keep it as "sent". We don't have a
+            // delivery/read-receipt channel, so never auto-promote to "delivered".
+            if (prev.some((m) => m.id === raw.id)) return prev;
             return [
               ...prev,
               {
                 ...decryptOne(raw, members, roomKey),
-                status: raw.sender_id === profile.id ? "delivered" : undefined,
+                status: raw.sender_id === profile.id ? "sent" : undefined,
               },
             ];
           });
