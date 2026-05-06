@@ -335,14 +335,18 @@ export function ChatRoom({ room, onBack }: { room: Room; onBack?: () => void }) 
                   } ${
                     tail ? (mine ? "rounded-tr-sm" : "rounded-tl-sm") : ""
                   }`}
-                  style={{ minWidth: 64 }}
+                  style={{ minWidth: 64, paddingBottom: 22 }}
                 >
                   {showName && (
                     <div className="mb-0.5 text-xs font-medium text-primary">
                       {m.sender_username ?? "unknown"}
                     </div>
                   )}
-                  <span className={`whitespace-pre-wrap break-words ${mine ? "pr-20" : "pr-16"}`}>
+                  <span
+                    className={`block whitespace-pre-wrap break-words leading-relaxed ${
+                      mine ? "pr-20" : "pr-16"
+                    }`}
+                  >
                     {m.text}
                   </span>
                   <span
