@@ -311,9 +311,12 @@ export function ChatRoom({ room, onBack }: { room: Room; onBack?: () => void }) 
                     </div>
                   )}
                   {m.failed ? (
-                    <span className="italic opacity-70">Unable to decrypt</span>
+                    <span className="inline-flex items-center gap-1 italic text-red-300/90">
+                      <ShieldAlert className="h-3.5 w-3.5" />
+                      Unable to decrypt on this device
+                    </span>
                   ) : (
-                    <span className={`whitespace-pre-wrap break-words ${mine ? "pr-16" : "pr-12"}`}>
+                    <span className={`whitespace-pre-wrap break-words ${mine ? "pr-20" : "pr-16"}`}>
                       {m.text}
                     </span>
                   )}
@@ -322,6 +325,11 @@ export function ChatRoom({ room, onBack }: { room: Room; onBack?: () => void }) 
                       mine ? "text-white/70" : "text-muted-foreground"
                     }`}
                   >
+                    {m.failed ? (
+                      <LockOpen className="h-3 w-3 text-red-300" aria-label="Decryption failed" />
+                    ) : (
+                      <ShieldCheck className="h-3 w-3 text-emerald-300" aria-label="Decrypted locally" />
+                    )}
                     {formatTime(m.created_at)}
                     {mine && <StatusTick status={m.status} />}
                   </span>
