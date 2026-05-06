@@ -31,6 +31,14 @@ export type DecryptedMessage = {
   failed?: boolean;
 };
 
+type MessageDecryptContext = {
+  isGroup: boolean;
+  me: KeyPair | null;
+  myUserId?: string;
+  members: { user_id: string; username?: string; public_key: string }[];
+  roomKey: Uint8Array | null;
+};
+
 export type RawMessage = {
   id: string;
   room_id: string;
@@ -301,26 +309,65 @@ export function decryptDirect(
   myUserId?: string
 ): string | null {
   // NaCl box uses a shared secret derived from (theirPub, mySecret).
-  // For incoming messages: counterparty = sender.
-  // For our own sent messages: counterparty = the OTHER member, because we
-  // encrypted to their public key with our secret key.
-  let counterparty: { user_id: string; public_key: string } | undefined;
+  // In practice, older rows can have a sender_id that no longer matches the
+  // current client identity model, so we try every plausible counterparty key
+  // before declaring a local decryption failure.
+  const candidates: { user_id: string; public_key: string }[] = [];
+
+  const pushCandidate = (candidate?: { user_id: string; public_key: string }) => {
+    if (!candidate) return;
+    if (candidates.some((m) => m.user_id === candidate.user_id)) return;
+    candidates.push(candidate);
+  };
+
   if (myUserId && raw.sender_id === myUserId) {
-    counterparty = members.find((m) => m.user_id !== myUserId);
-  } else {
-    counterparty = members.find((m) => m.user_id === raw.sender_id);
+    pushCandidate(members.find((m) => m.user_id !== myUserId));
   }
-  if (!counterparty) return null;
-  const pt = boxDecrypt(
-    b64.dec(raw.encrypted_content),
-    b64.dec(raw.nonce),
-    b64.dec(counterparty.public_key),
-    me.secretKey
-  );
-  return pt ? utf8.dec(pt) : null;
+
+  pushCandidate(members.find((m) => m.user_id === raw.sender_id));
+
+  for (const member of members) {
+    if (member.user_id !== myUserId) pushCandidate(member);
+  }
+
+  for (const counterparty of candidates) {
+    const pt = boxDecrypt(
+      b64.dec(raw.encrypted_content),
+      b64.dec(raw.nonce),
+      b64.dec(counterparty.public_key),
+      me.secretKey
+    );
+    if (pt) return utf8.dec(pt);
+  }
+
+  return null;
 }
 
 export function decryptGroup(raw: RawMessage, roomKey: Uint8Array): string | null {
   const pt = secretDecrypt(b64.dec(raw.encrypted_content), b64.dec(raw.nonce), roomKey);
   return pt ? utf8.dec(pt) : null;
+}
+
+export function decryptMessageForRoom(
+  raw: RawMessage,
+  ctx: MessageDecryptContext
+): DecryptedMessage {
+  const sender = ctx.members.find((m) => m.user_id === raw.sender_id);
+
+  let text: string | null | undefined;
+  if (ctx.isGroup) {
+    text = ctx.roomKey ? decryptGroup(raw, ctx.roomKey) : undefined;
+  } else if (ctx.me && ctx.myUserId && ctx.members.length >= 2) {
+    text = decryptDirect(raw, ctx.me, ctx.members, ctx.myUserId);
+  }
+
+  return {
+    id: raw.id,
+    room_id: raw.room_id,
+    sender_id: raw.sender_id,
+    sender_username: sender?.username,
+    created_at: raw.created_at,
+    text: typeof text === "string" ? text : "",
+    failed: text === null,
+  };
 }

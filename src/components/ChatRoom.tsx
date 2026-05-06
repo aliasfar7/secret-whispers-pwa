@@ -2,8 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { useAuth } from "@/lib/auth";
 import { supabase } from "@/lib/supabase";
 import {
-  decryptDirect,
-  decryptGroup,
+  decryptMessageForRoom,
   fetchMessages,
   getMyRoomKey,
   getRoomMembers,
@@ -57,25 +56,15 @@ export function ChatRoom({ room, onBack }: { room: Room; onBack?: () => void }) 
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const touchStart = useRef<{ x: number; y: number } | null>(null);
 
-  const decryptOne = (
-    raw: RawMessage,
-    mems: typeof members,
-    rk: Uint8Array | null
-  ): UIMessage => {
-    const sender = mems.find((m) => m.user_id === raw.sender_id);
-    let pt: string | null = null;
-    if (room.is_group && rk) pt = decryptGroup(raw, rk);
-    else if (!room.is_group && keyPair) pt = decryptDirect(raw, keyPair, mems, profile?.id);
-    return {
-      id: raw.id,
-      room_id: raw.room_id,
-      sender_id: raw.sender_id,
-      sender_username: sender?.username,
-      created_at: raw.created_at,
-      text: pt ?? "",
-      failed: pt === null,
-    };
-  };
+  const decryptOne = (raw: RawMessage, mems: typeof members, rk: Uint8Array | null): UIMessage => ({
+    ...decryptMessageForRoom(raw, {
+      isGroup: room.is_group,
+      me: keyPair,
+      myUserId: profile?.id,
+      members: mems,
+      roomKey: rk,
+    }),
+  });
 
   useEffect(() => {
     if (!profile || !keyPair) return;
@@ -107,8 +96,7 @@ export function ChatRoom({ room, onBack }: { room: Room; onBack?: () => void }) 
     return () => {
       cancelled = true;
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [room.id, profile?.id]);
+  }, [room.id, room.is_group, profile?.id, keyPair]);
 
   useEffect(() => {
     if (!profile) return;
@@ -145,8 +133,7 @@ export function ChatRoom({ room, onBack }: { room: Room; onBack?: () => void }) 
     return () => {
       supabase.removeChannel(ch);
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [room.id, members, roomKey, profile?.id]);
+  }, [room.id, room.is_group, members, roomKey, profile?.id, keyPair]);
 
   useEffect(() => {
     scrollerRef.current?.scrollTo({ top: scrollerRef.current.scrollHeight });

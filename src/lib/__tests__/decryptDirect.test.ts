@@ -77,6 +77,36 @@ describe("decryptDirect — self messages after reload", () => {
     expect(decryptDirect(raw, me, members, myId)).toBe(plaintext);
   });
 
+  it("falls back to the other member key when legacy sender ids do not match member ids", () => {
+    const me = generateKeyPair();
+    const other = generateKeyPair();
+    const myId = "me-uuid";
+    const otherId = "other-uuid";
+
+    const plaintext = "legacy sender id still decrypts";
+    const { ciphertext, nonce } = boxEncrypt(
+      utf8.enc(plaintext),
+      me.publicKey,
+      other.secretKey
+    );
+
+    const raw: RawMessage = {
+      id: "m-legacy",
+      room_id: "r1",
+      sender_id: "legacy-auth-id",
+      encrypted_content: b64.enc(ciphertext),
+      nonce: b64.enc(nonce),
+      created_at: new Date().toISOString(),
+    };
+
+    const members = [
+      { user_id: myId, public_key: b64.enc(me.publicKey) },
+      { user_id: otherId, public_key: b64.enc(other.publicKey) },
+    ];
+
+    expect(decryptDirect(raw, me, members, myId)).toBe(plaintext);
+  });
+
   it("returns null on tampered ciphertext (failed decryption signal)", () => {
     const me = generateKeyPair();
     const other = generateKeyPair();
