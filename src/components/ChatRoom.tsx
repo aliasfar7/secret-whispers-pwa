@@ -13,7 +13,7 @@ import {
   type RawMessage,
   type Room,
 } from "@/lib/chat";
-import { ArrowLeft, Check, CheckCheck, Clock, Lock, MoreVertical, Send, Smile, TriangleAlert, X } from "lucide-react";
+import { ArrowLeft, Check, CheckCheck, Clock, Lock, LockOpen, MoreVertical, Send, ShieldAlert, ShieldCheck, Smile, TriangleAlert, X } from "lucide-react";
 import EmojiPicker, { EmojiStyle, Theme } from "emoji-picker-react";
 
 type MsgStatus = "sending" | "sent" | "delivered" | "failed";
