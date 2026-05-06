@@ -297,14 +297,24 @@ export async function sendGroupMessage(
 export function decryptDirect(
   raw: RawMessage,
   me: KeyPair,
-  members: { user_id: string; public_key: string }[]
+  members: { user_id: string; public_key: string }[],
+  myUserId?: string
 ): string | null {
-  const sender = members.find((m) => m.user_id === raw.sender_id);
-  if (!sender) return null;
+  // NaCl box uses a shared secret derived from (theirPub, mySecret).
+  // For incoming messages: counterparty = sender.
+  // For our own sent messages: counterparty = the OTHER member, because we
+  // encrypted to their public key with our secret key.
+  let counterparty: { user_id: string; public_key: string } | undefined;
+  if (myUserId && raw.sender_id === myUserId) {
+    counterparty = members.find((m) => m.user_id !== myUserId);
+  } else {
+    counterparty = members.find((m) => m.user_id === raw.sender_id);
+  }
+  if (!counterparty) return null;
   const pt = boxDecrypt(
     b64.dec(raw.encrypted_content),
     b64.dec(raw.nonce),
-    b64.dec(sender.public_key),
+    b64.dec(counterparty.public_key),
     me.secretKey
   );
   return pt ? utf8.dec(pt) : null;
