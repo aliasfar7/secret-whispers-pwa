@@ -99,34 +99,6 @@ export function ChatRoom({ room, onBack }: { room: Room; onBack?: () => void }) 
   }, [room.id, room.is_group, profile?.id, keyPair]);
 
   useEffect(() => {
-    if (messages.length === 0) return;
-    const next = messages.map((m) => {
-      if (m.text || m.failed !== undefined) return m;
-      return {
-        ...decryptOne(
-          {
-            id: m.id,
-            room_id: m.room_id,
-            sender_id: m.sender_id,
-            encrypted_content: "",
-            nonce: "",
-            created_at: m.created_at,
-          },
-          members,
-          roomKey
-        ),
-        status: m.status,
-        tempId: m.tempId,
-      };
-    });
-
-    const changed = next.some(
-      (m, index) => m.text !== messages[index]?.text || m.failed !== messages[index]?.failed
-    );
-    if (changed) setMessages(next);
-  }, [members, roomKey, keyPair, profile?.id]);
-
-  useEffect(() => {
     if (!profile) return;
     const ch = supabase
       .channel(`messages:${room.id}`)
@@ -161,8 +133,7 @@ export function ChatRoom({ room, onBack }: { room: Room; onBack?: () => void }) 
     return () => {
       supabase.removeChannel(ch);
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [room.id, members, roomKey, profile?.id]);
+  }, [room.id, room.is_group, members, roomKey, profile?.id, keyPair]);
 
   useEffect(() => {
     scrollerRef.current?.scrollTo({ top: scrollerRef.current.scrollHeight });
