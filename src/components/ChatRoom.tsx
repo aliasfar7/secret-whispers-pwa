@@ -45,7 +45,12 @@ export function ChatRoom({ room, onBack }: { room: Room; onBack?: () => void }) 
     { user_id: string; username: string; public_key: string }[]
   >([]);
   const [roomKey, setRoomKey] = useState<Uint8Array | null>(null);
-  const [messages, setMessages] = useState<UIMessage[]>([]);
+  // Raw rows (re-decrypted on render so late-arriving keys/members recover msgs).
+  const [rawMessages, setRawMessages] = useState<RawMessage[]>([]);
+  // Status overlay keyed by message id (for our own outgoing messages).
+  const [statusById, setStatusById] = useState<Record<string, MsgStatus>>({});
+  // Optimistic, not-yet-saved outgoing messages.
+  const [pending, setPending] = useState<UIMessage[]>([]);
   const [text, setText] = useState("");
   const [sending, setSending] = useState(false);
   const [err, setErr] = useState<string | null>(null);
@@ -56,16 +61,6 @@ export function ChatRoom({ room, onBack }: { room: Room; onBack?: () => void }) 
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const touchStart = useRef<{ x: number; y: number } | null>(null);
 
-  const decryptOne = (raw: RawMessage, mems: typeof members, rk: Uint8Array | null): UIMessage => ({
-    ...decryptMessageForRoom(raw, {
-      isGroup: room.is_group,
-      me: keyPair,
-      myUserId: profile?.id,
-      members: mems,
-      roomKey: rk,
-    }),
-  });
-
   useEffect(() => {
     if (!profile || !keyPair) return;
     let cancelled = false;
@@ -75,20 +70,21 @@ export function ChatRoom({ room, onBack }: { room: Room; onBack?: () => void }) 
         const mems = await getRoomMembers(room.id);
         if (cancelled) return;
         setMembers(mems);
-        let rk: Uint8Array | null = null;
         if (room.is_group) {
-          rk = await getMyRoomKey(room.id, { id: profile.id, keyPair });
+          const rk = await getMyRoomKey(room.id, { id: profile.id, keyPair });
           if (cancelled) return;
           setRoomKey(rk);
         }
         const raw = await fetchMessages(room.id);
         if (cancelled) return;
-        setMessages(
-          raw.map((r) => ({
-            ...decryptOne(r, mems, rk),
-            status: r.sender_id === profile.id ? "sent" : undefined,
-          }))
-        );
+        setRawMessages(raw);
+        setStatusById((s) => {
+          const next = { ...s };
+          for (const r of raw) {
+            if (r.sender_id === profile.id && !next[r.id]) next[r.id] = "sent";
+          }
+          return next;
+        });
       } catch (e: any) {
         setErr(e?.message ?? "Failed to load room");
       }
@@ -112,26 +108,33 @@ export function ChatRoom({ room, onBack }: { room: Room; onBack?: () => void }) 
         },
         (payload) => {
           const raw = payload.new as RawMessage;
-          setMessages((prev) => {
-            // Already present (sent locally)? Server-side echo just confirms
-            // the row was persisted — keep it as "sent". We don't have a
-            // delivery/read-receipt channel, so never auto-promote to "delivered".
-            if (prev.some((m) => m.id === raw.id)) return prev;
-            return [
-              ...prev,
-              {
-                ...decryptOne(raw, members, roomKey),
-                status: raw.sender_id === profile.id ? "sent" : undefined,
-              },
-            ];
-          });
+          setRawMessages((prev) =>
+            prev.some((m) => m.id === raw.id) ? prev : [...prev, raw]
+          );
+          if (raw.sender_id === profile.id) {
+            setStatusById((s) => (s[raw.id] ? s : { ...s, [raw.id]: "sent" }));
+          }
         }
       )
       .subscribe();
     return () => {
       supabase.removeChannel(ch);
     };
-  }, [room.id, room.is_group, members, roomKey, profile?.id, keyPair]);
+  }, [room.id, profile?.id]);
+
+  // Decrypt raw messages on every render so late context updates recover them.
+  const decryptedMessages: UIMessage[] = rawMessages.map((r) => ({
+    ...decryptMessageForRoom(r, {
+      isGroup: room.is_group,
+      me: keyPair,
+      myUserId: profile?.id,
+      members,
+      roomKey,
+    }),
+    status: r.sender_id === profile?.id ? statusById[r.id] ?? "sent" : undefined,
+  }));
+
+  const messages: UIMessage[] = [...decryptedMessages, ...pending];
 
   useEffect(() => {
     scrollerRef.current?.scrollTo({ top: scrollerRef.current.scrollHeight });
@@ -156,7 +159,7 @@ export function ChatRoom({ room, onBack }: { room: Room; onBack?: () => void }) 
       text: body,
       status: "sending",
     };
-    setMessages((prev) => [...prev, optimistic]);
+    setPending((prev) => [...prev, optimistic]);
     try {
       let saved: RawMessage;
       if (room.is_group) {
@@ -172,16 +175,15 @@ export function ChatRoom({ room, onBack }: { room: Room; onBack?: () => void }) 
           { public_key: other.public_key }
         );
       }
-      setMessages((prev) =>
-        prev.map((m) =>
-          m.tempId === tempId
-            ? { ...m, id: saved.id, created_at: saved.created_at, status: "sent" }
-            : m
-        )
+      // Replace optimistic with real raw row, then drop the pending bubble.
+      setRawMessages((prev) =>
+        prev.some((m) => m.id === saved.id) ? prev : [...prev, saved]
       );
+      setStatusById((s) => ({ ...s, [saved.id]: "sent" }));
+      setPending((prev) => prev.filter((m) => m.tempId !== tempId));
     } catch (e: any) {
       setErr(e?.message ?? "Failed to send");
-      setMessages((prev) =>
+      setPending((prev) =>
         prev.map((m) => (m.tempId === tempId ? { ...m, status: "failed" } : m))
       );
     } finally {
