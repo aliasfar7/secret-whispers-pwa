@@ -86,7 +86,7 @@ export function ChatRoom({ room, onBack }: { room: Room; onBack?: () => void }) 
         setMessages(
           raw.map((r) => ({
             ...decryptOne(r, mems, rk),
-            status: r.sender_id === profile.id ? "delivered" : undefined,
+            status: r.sender_id === profile.id ? "sent" : undefined,
           }))
         );
       } catch (e: any) {
