@@ -65,7 +65,7 @@ export function ChatRoom({ room, onBack }: { room: Room; onBack?: () => void }) 
     const sender = mems.find((m) => m.user_id === raw.sender_id);
     let pt: string | null = null;
     if (room.is_group && rk) pt = decryptGroup(raw, rk);
-    else if (!room.is_group && keyPair) pt = decryptDirect(raw, keyPair, mems);
+    else if (!room.is_group && keyPair) pt = decryptDirect(raw, keyPair, mems, profile?.id);
     return {
       id: raw.id,
       room_id: raw.room_id,
