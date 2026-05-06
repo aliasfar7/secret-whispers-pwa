@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useAuth } from "@/lib/auth";
 import { supabase } from "@/lib/supabase";
+import { cacheMessageText, getCachedMessageTexts } from "@/lib/messageCache";
 import {
   decryptMessageForRoom,
   fetchMessages,
@@ -49,6 +50,7 @@ export function ChatRoom({ room, onBack }: { room: Room; onBack?: () => void }) 
   const [rawMessages, setRawMessages] = useState<RawMessage[]>([]);
   // Status overlay keyed by message id (for our own outgoing messages).
   const [statusById, setStatusById] = useState<Record<string, MsgStatus>>({});
+  const [cachedTextById, setCachedTextById] = useState<Record<string, string>>({});
   // Optimistic, not-yet-saved outgoing messages.
   const [pending, setPending] = useState<UIMessage[]>([]);
   const [text, setText] = useState("");
@@ -78,6 +80,12 @@ export function ChatRoom({ room, onBack }: { room: Room; onBack?: () => void }) 
         const raw = await fetchMessages(room.id);
         if (cancelled) return;
         setRawMessages(raw);
+        const cachedTexts = await getCachedMessageTexts(
+          room.id,
+          raw.map((message) => message.id)
+        );
+        if (cancelled) return;
+        setCachedTextById(cachedTexts);
         setStatusById((s) => {
           const next = { ...s };
           for (const r of raw) {
@@ -124,15 +132,50 @@ export function ChatRoom({ room, onBack }: { room: Room; onBack?: () => void }) 
 
   // Decrypt raw messages on every render so late context updates recover them.
   const decryptedMessages: UIMessage[] = rawMessages.map((r) => ({
-    ...decryptMessageForRoom(r, {
-      isGroup: room.is_group,
-      me: keyPair,
-      myUserId: profile?.id,
-      members,
-      roomKey,
-    }),
+    ...(() => {
+      const decrypted = decryptMessageForRoom(r, {
+        isGroup: room.is_group,
+        me: keyPair,
+        myUserId: profile?.id,
+        members,
+        roomKey,
+      });
+      const cachedText = cachedTextById[r.id];
+      if (!decrypted.text && cachedText) {
+        return {
+          ...decrypted,
+          text: cachedText,
+          failed: false,
+        };
+      }
+      return decrypted;
+    })(),
     status: r.sender_id === profile?.id ? statusById[r.id] ?? "sent" : undefined,
   }));
+
+  useEffect(() => {
+    const visibleMessages = decryptedMessages.filter((message) => message.text);
+    if (visibleMessages.length === 0) return;
+
+    void Promise.all(
+      visibleMessages.map(async (message) => {
+        if (cachedTextById[message.id] === message.text) return;
+        await cacheMessageText(room.id, message.id, message.text);
+      })
+    ).then(() => {
+      setCachedTextById((prev) => {
+        const next = { ...prev };
+        let changed = false;
+        for (const message of visibleMessages) {
+          if (next[message.id] !== message.text) {
+            next[message.id] = message.text;
+            changed = true;
+          }
+        }
+        return changed ? next : prev;
+      });
+    });
+  }, [cachedTextById, decryptedMessages, room.id]);
 
   const messages: UIMessage[] = [...decryptedMessages, ...pending];
 
@@ -176,10 +219,12 @@ export function ChatRoom({ room, onBack }: { room: Room; onBack?: () => void }) 
         );
       }
       // Replace optimistic with real raw row, then drop the pending bubble.
+      await cacheMessageText(room.id, saved.id, body);
       setRawMessages((prev) =>
         prev.some((m) => m.id === saved.id) ? prev : [...prev, saved]
       );
       setStatusById((s) => ({ ...s, [saved.id]: "sent" }));
+      setCachedTextById((prev) => ({ ...prev, [saved.id]: body }));
       setPending((prev) => prev.filter((m) => m.tempId !== tempId));
     } catch (e: any) {
       setErr(e?.message ?? "Failed to send");
