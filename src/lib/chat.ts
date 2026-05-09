@@ -31,11 +31,19 @@ export type DecryptedMessage = {
   failed?: boolean;
 };
 
+export type RoomMember = {
+  user_id: string;
+  username: string;
+  public_key: string;
+  canonical_user_id?: string;
+  auth_user_id?: string | null;
+};
+
 type MessageDecryptContext = {
   isGroup: boolean;
   me: KeyPair | null;
-  myUserId?: string;
-  members: { user_id: string; username?: string; public_key: string }[];
+   myUserId?: string | string[];
+   members: RoomMember[];
   roomKey: Uint8Array | null;
 };
 
@@ -55,11 +63,65 @@ type Membership = {
   ek_sender_key: string;
 };
 
-export async function listRoomsForUser(userId: string): Promise<Room[]> {
-  const { data: memberships, error } = await supabase
+function uniqueIds(ids: Array<string | null | undefined>) {
+  return Array.from(new Set(ids.filter(Boolean) as string[]));
+}
+
+function quotePostgrestList(ids: string[]) {
+  return ids.map((id) => JSON.stringify(id)).join(",");
+}
+
+function memberHasIdentity(member: RoomMember, ids: string[]) {
+  return ids.some(
+    (id) =>
+      member.user_id === id ||
+      member.canonical_user_id === id ||
+      member.auth_user_id === id
+  );
+}
+
+function memberMatchesSender(member: RoomMember, senderId: string) {
+  return (
+    member.user_id === senderId ||
+    member.canonical_user_id === senderId ||
+    member.auth_user_id === senderId
+  );
+}
+
+async function getUsersByAnyId(ids: string[]) {
+  const lookupIds = uniqueIds(ids);
+  if (lookupIds.length === 0) return [];
+
+  const inList = quotePostgrestList(lookupIds);
+  const { data, error } = await supabase
+    .from("users")
+    .select("id, username, public_key, auth_user_id")
+    .or(`id.in.(${inList}),auth_user_id.in.(${inList})`);
+
+  if (error) throw error;
+
+  return (data ?? []) as {
+    id: string;
+    username: string;
+    public_key: string;
+    auth_user_id?: string | null;
+  }[];
+}
+
+export async function listRoomsForUser(userId: string | string[]): Promise<Room[]> {
+  const userIds = uniqueIds(Array.isArray(userId) ? userId : [userId]);
+  if (userIds.length === 0) return [];
+
+  const membershipQuery = supabase
     .from("room_members")
     .select("room_id")
-    .eq("user_id", userId);
+    .order("joined_at", { ascending: false });
+
+  const { data: memberships, error } =
+    userIds.length === 1
+      ? await membershipQuery.eq("user_id", userIds[0])
+      : await membershipQuery.in("user_id", userIds);
+
   if (error) throw error;
   const ids = (memberships ?? []).map((m) => m.room_id);
   if (ids.length === 0) return [];
@@ -81,32 +143,43 @@ export async function getRoomMembers(roomId: string) {
   if (error) throw error;
   const ids = (mems ?? []).map((m) => m.user_id);
   if (ids.length === 0) return [];
-  const { data: users, error: e2 } = await supabase
-    .from("users")
-    .select("id, username, public_key")
-    .in("id", ids);
-  if (e2) throw e2;
-  return (users ?? []).map((u) => ({
-    user_id: u.id,
-    username: u.username,
-    public_key: u.public_key,
-  }));
+  const users = await getUsersByAnyId(ids);
+  return ids
+    .map((memberId) => {
+      const user = users.find(
+        (candidate) => candidate.id === memberId || candidate.auth_user_id === memberId
+      );
+      if (!user) return null;
+      return {
+        user_id: memberId,
+        username: user.username,
+        public_key: user.public_key,
+        canonical_user_id: user.id,
+        auth_user_id: user.auth_user_id ?? null,
+      } satisfies RoomMember;
+    })
+    .filter(Boolean) as RoomMember[];
 }
 
 // Get this user's sealed copy of the room key (group rooms only).
 export async function getMyRoomKey(
   roomId: string,
-  me: { id: string; keyPair: KeyPair }
+  me: { id: string; keyPair: KeyPair; authUserId?: string }
 ): Promise<Uint8Array | null> {
-  const { data, error } = await supabase
+  const myIds = uniqueIds([me.id, me.authUserId]);
+  const query = supabase
     .from("room_members")
     .select("encrypted_room_key, ek_nonce, ek_sender_key")
     .eq("room_id", roomId)
-    .eq("user_id", me.id)
-    .maybeSingle();
+    .limit(1);
+  const { data, error } =
+    myIds.length === 1
+      ? await query.eq("user_id", myIds[0]).maybeSingle()
+      : await query.in("user_id", myIds);
   if (error) throw error;
-  if (!data) return null;
-  const m = data as Membership;
+  const row = Array.isArray(data) ? data[0] : data;
+  if (!row) return null;
+  const m = row as Membership;
   return boxDecrypt(
     b64.dec(m.encrypted_room_key),
     b64.dec(m.ek_nonce),
@@ -138,22 +211,34 @@ export async function searchUsers(query: string, excludeId?: string) {
 }
 
 // Find existing 1:1 room between two users.
-async function findDirectRoom(a: string, b: string): Promise<string | null> {
-  const { data, error } = await supabase
+async function findDirectRoom(a: string | string[], b: string | string[]): Promise<string | null> {
+  const aIds = uniqueIds(Array.isArray(a) ? a : [a]);
+  const bIds = uniqueIds(Array.isArray(b) ? b : [b]);
+  if (aIds.length === 0 || bIds.length === 0) return null;
+
+  const memberQuery = supabase
     .from("room_members")
     .select("room_id, rooms!inner(is_group)")
-    .eq("user_id", a);
+    .order("joined_at", { ascending: false });
+
+  const { data, error } =
+    aIds.length === 1
+      ? await memberQuery.eq("user_id", aIds[0])
+      : await memberQuery.in("user_id", aIds);
   if (error) throw error;
   const roomIds = (data ?? [])
     .filter((r: any) => r.rooms?.is_group === false)
     .map((r: any) => r.room_id as string);
   if (roomIds.length === 0) return null;
 
-  const { data: shared, error: e2 } = await supabase
+  const sharedQuery = supabase
     .from("room_members")
     .select("room_id")
-    .eq("user_id", b)
     .in("room_id", roomIds);
+  const { data: shared, error: e2 } =
+    bIds.length === 1
+      ? await sharedQuery.eq("user_id", bIds[0])
+      : await sharedQuery.in("user_id", bIds);
   if (e2) throw e2;
   return shared && shared.length > 0 ? (shared[0].room_id as string) : null;
 }
