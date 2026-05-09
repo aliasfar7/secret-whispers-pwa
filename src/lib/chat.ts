@@ -252,7 +252,11 @@ export async function fetchMessages(roomId: string, limit = 100) {
     .eq("room_id", roomId)
     .order("created_at", { ascending: true })
     .limit(limit);
-  if (error) throw error;
+  if (error) {
+    console.error("[chat] fetchMessages failed", { roomId, error });
+    throw error;
+  }
+  console.info("[chat] fetchMessages result", { roomId, count: data?.length ?? 0 });
   return (data ?? []) as RawMessage[];
 }
 
@@ -289,7 +293,16 @@ export async function sendDirectMessage(
     })
     .select()
     .single();
-  if (error) throw error;
+  if (error) {
+    console.error("[chat] sendDirectMessage failed", {
+      roomId,
+      senderId: me.id,
+      recipientKeyPrefix: recipient.public_key.slice(0, 16),
+      error,
+    });
+    throw error;
+  }
+  console.info("[chat] sendDirectMessage inserted", { roomId, messageId: data.id, senderId: me.id });
   return data as RawMessage;
 }
 
@@ -362,6 +375,15 @@ export function decryptDirect(
     );
     if (pt) return utf8.dec(pt);
   }
+
+  console.warn("[chat] decryptDirect failed", {
+    messageId: raw.id,
+    senderId: raw.sender_id,
+    myUserId,
+    memberIds: members.map((member) => member.user_id),
+    ciphertextParts: ctParts.length,
+    nonceParts: nParts.length,
+  });
 
   // 3) Last-ditch: if we are the recipient and there's a sender-self half,
   //    we can't read it (we don't have the sender's secret), so nothing to do.
