@@ -77,6 +77,33 @@ describe("decryptDirect — self messages after reload", () => {
     expect(decryptDirect(raw, me, members, myId)).toBe(plaintext);
   });
 
+  it("decrypts packed dual-ciphertext messages for the recipient", () => {
+    const me = generateKeyPair();
+    const other = generateKeyPair();
+    const myId = "me-uuid";
+    const otherId = "other-uuid";
+
+    const plaintext = "packed message to recipient";
+    const forRecipient = boxEncrypt(utf8.enc(plaintext), me.publicKey, other.secretKey);
+    const forSender = boxEncrypt(utf8.enc(plaintext), other.publicKey, other.secretKey);
+
+    const raw: RawMessage = {
+      id: "m-packed-recipient",
+      room_id: "r1",
+      sender_id: otherId,
+      encrypted_content: `${b64.enc(forRecipient.ciphertext)}|${b64.enc(forSender.ciphertext)}`,
+      nonce: `${b64.enc(forRecipient.nonce)}|${b64.enc(forSender.nonce)}`,
+      created_at: new Date().toISOString(),
+    };
+
+    const members = [
+      { user_id: myId, public_key: b64.enc(me.publicKey) },
+      { user_id: otherId, public_key: b64.enc(other.publicKey) },
+    ];
+
+    expect(decryptDirect(raw, me, members, myId)).toBe(plaintext);
+  });
+
   it("falls back to the other member key when legacy sender ids do not match member ids", () => {
     const me = generateKeyPair();
     const other = generateKeyPair();
