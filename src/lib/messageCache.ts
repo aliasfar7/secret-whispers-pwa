@@ -10,6 +10,17 @@ type CachedMessage = {
   updatedAt: string;
 };
 
+const INVALID_CACHED_TEXT = [
+  /^unable to decrypt$/i,
+  /^message unavailable$/i,
+  /^could not decrypt$/i,
+];
+
+function isValidCachedText(text?: string | null) {
+  if (!text?.trim()) return false;
+  return !INVALID_CACHED_TEXT.some((pattern) => pattern.test(text.trim()));
+}
+
 let dbPromise: Promise<IDBPDatabase> | null = null;
 
 function db() {
@@ -28,7 +39,7 @@ function cacheKey(roomId: string, messageId: string) {
 }
 
 export async function cacheMessageText(roomId: string, messageId: string, text: string) {
-  if (!text) return;
+  if (!isValidCachedText(text)) return;
   const d = await db();
   await d.put(
     STORE,
@@ -49,7 +60,12 @@ export async function getCachedMessageTexts(roomId: string, messageIds: string[]
       const cached = (await d.get(STORE, cacheKey(roomId, messageId))) as
         | CachedMessage
         | undefined;
-      return cached?.text ? [messageId, cached.text] : null;
+      if (!cached) return null;
+      if (!isValidCachedText(cached.text)) {
+        await d.delete(STORE, cacheKey(roomId, messageId));
+        return null;
+      }
+      return [messageId, cached.text] as const;
     })
   );
 
