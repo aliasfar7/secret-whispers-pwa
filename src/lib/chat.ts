@@ -262,18 +262,30 @@ export async function sendDirectMessage(
   me: { id: string; keyPair: KeyPair },
   recipient: { public_key: string }
 ): Promise<RawMessage> {
-  const { ciphertext, nonce } = boxEncrypt(
-    utf8.enc(text),
+  const plaintext = utf8.enc(text);
+  // Encrypt twice: once for the recipient and once for the sender (box-to-self).
+  // This guarantees the sender can ALWAYS decrypt their own outgoing messages
+  // from the server, even after a refresh, new device, or lost local cache.
+  // Packed as "<recipient_ct>|<sender_ct>" / "<recipient_nonce>|<sender_nonce>".
+  const forRecipient = boxEncrypt(
+    plaintext,
     b64.dec(recipient.public_key),
     me.keyPair.secretKey
   );
+  const forSender = boxEncrypt(
+    plaintext,
+    me.keyPair.publicKey,
+    me.keyPair.secretKey
+  );
+  const packedCiphertext = `${b64.enc(forRecipient.ciphertext)}|${b64.enc(forSender.ciphertext)}`;
+  const packedNonce = `${b64.enc(forRecipient.nonce)}|${b64.enc(forSender.nonce)}`;
   const { data, error } = await supabase
     .from("messages")
     .insert({
       room_id: roomId,
       sender_id: me.id,
-      encrypted_content: b64.enc(ciphertext),
-      nonce: b64.enc(nonce),
+      encrypted_content: packedCiphertext,
+      nonce: packedNonce,
     })
     .select()
     .single();
