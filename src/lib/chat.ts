@@ -320,12 +320,25 @@ export function decryptDirect(
   members: { user_id: string; public_key: string }[],
   myUserId?: string
 ): string | null {
-  // NaCl box uses a shared secret derived from (theirPub, mySecret).
-  // In practice, older rows can have a sender_id that no longer matches the
-  // current client identity model, so we try every plausible counterparty key
-  // before declaring a local decryption failure.
-  const candidates: { user_id: string; public_key: string }[] = [];
+  // Messages can be packed as "<recipient_ct>|<sender_ct>" with matching
+  // packed nonces, so the sender can always decrypt their own outgoing copy
+  // even on a fresh device. Legacy single-ciphertext rows still decrypt.
+  const ctParts = raw.encrypted_content.split("|");
+  const nParts = raw.nonce.split("|");
+  const recipientCt = b64.dec(ctParts[0]);
+  const recipientNonce = b64.dec(nParts[0]);
+  const senderCt = ctParts[1] ? b64.dec(ctParts[1]) : null;
+  const senderNonce = nParts[1] ? b64.dec(nParts[1]) : null;
 
+  // 1) If we are the sender and the message has a sender-self copy, decrypt
+  //    it directly with our own keypair (box-to-self).
+  if (senderCt && senderNonce && myUserId && raw.sender_id === myUserId) {
+    const pt = boxDecrypt(senderCt, senderNonce, me.publicKey, me.secretKey);
+    if (pt) return utf8.dec(pt);
+  }
+
+  // 2) Try every plausible counterparty key against the recipient ciphertext.
+  const candidates: { user_id: string; public_key: string }[] = [];
   const pushCandidate = (candidate?: { user_id: string; public_key: string }) => {
     if (!candidate) return;
     if (candidates.some((m) => m.user_id === candidate.user_id)) return;
@@ -335,23 +348,23 @@ export function decryptDirect(
   if (myUserId && raw.sender_id === myUserId) {
     pushCandidate(members.find((m) => m.user_id !== myUserId));
   }
-
   pushCandidate(members.find((m) => m.user_id === raw.sender_id));
-
   for (const member of members) {
     if (member.user_id !== myUserId) pushCandidate(member);
   }
 
   for (const counterparty of candidates) {
     const pt = boxDecrypt(
-      b64.dec(raw.encrypted_content),
-      b64.dec(raw.nonce),
+      recipientCt,
+      recipientNonce,
       b64.dec(counterparty.public_key),
       me.secretKey
     );
     if (pt) return utf8.dec(pt);
   }
 
+  // 3) Last-ditch: if we are the recipient and there's a sender-self half,
+  //    we can't read it (we don't have the sender's secret), so nothing to do.
   return null;
 }
 
