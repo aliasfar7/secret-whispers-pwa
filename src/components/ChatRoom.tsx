@@ -11,6 +11,7 @@ import {
   sendGroupMessage,
   type DecryptedMessage,
   type RawMessage,
+  type RoomMember,
   type Room,
 } from "@/lib/chat";
 import { ArrowLeft, Check, CheckCheck, Clock, Lock, LockOpen, MoreVertical, Send, ShieldAlert, ShieldCheck, Smile, TriangleAlert, X } from "lucide-react";
@@ -50,9 +51,7 @@ function StatusTick({ status }: { status?: MsgStatus }) {
 
 export function ChatRoom({ room, onBack }: { room: Room; onBack?: () => void }) {
   const { profile, keyPair } = useAuth();
-  const [members, setMembers] = useState<
-    { user_id: string; username: string; public_key: string }[]
-  >([]);
+  const [members, setMembers] = useState<RoomMember[]>([]);
   const [roomKey, setRoomKey] = useState<Uint8Array | null>(null);
   // Raw rows (re-decrypted on render so late-arriving keys/members recover msgs).
   const [rawMessages, setRawMessages] = useState<RawMessage[]>([]);
