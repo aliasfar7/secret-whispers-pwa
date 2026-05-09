@@ -33,7 +33,7 @@ export type DecryptedMessage = {
 
 export type RoomMember = {
   user_id: string;
-  username: string;
+  username?: string;
   public_key: string;
   canonical_user_id?: string;
   auth_user_id?: string | null;
