@@ -75,6 +75,11 @@ export function ChatRoom({ room, onBack }: { room: Room; onBack?: () => void }) 
     if (!profile) return;
 
     const raw = await fetchMessages(room.id);
+    console.info("[chat] syncMessages", {
+      roomId: room.id,
+      profileId: profile.id,
+      fetchedCount: raw.length,
+    });
 
     setRawMessages((prev) => {
       const next = mergeRawMessages(prev, raw);
@@ -158,6 +163,12 @@ export function ChatRoom({ room, onBack }: { room: Room; onBack?: () => void }) 
         },
         (payload) => {
           const raw = payload.new as RawMessage;
+          console.info("[chat] realtime message insert", {
+            roomId: room.id,
+            messageId: raw.id,
+            senderId: raw.sender_id,
+            viewerId: profile.id,
+          });
           setRawMessages((prev) =>
             prev.some((m) => m.id === raw.id) ? prev : [...prev, raw]
           );
@@ -167,6 +178,7 @@ export function ChatRoom({ room, onBack }: { room: Room; onBack?: () => void }) 
         }
       )
       .subscribe((status) => {
+        console.info("[chat] messages subscription status", { roomId: room.id, status });
         if (status === "SUBSCRIBED") {
           void syncMessages();
         }
@@ -299,6 +311,11 @@ export function ChatRoom({ room, onBack }: { room: Room; onBack?: () => void }) 
       setCachedTextById((prev) => ({ ...prev, [saved.id]: body }));
       setPending((prev) => prev.filter((m) => m.tempId !== tempId));
     } catch (e: any) {
+      console.error("[chat] send failed in ChatRoom", {
+        roomId: room.id,
+        profileId: profile.id,
+        error: e,
+      });
       setErr(e?.message ?? "Failed to send");
       setPending((prev) =>
         prev.map((m) => (m.tempId === tempId ? { ...m, status: "failed" } : m))
