@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useAuth } from "@/lib/auth";
 import { supabase } from "@/lib/supabase";
 import { cacheMessageText, getCachedMessageTexts } from "@/lib/messageCache";
@@ -28,6 +28,14 @@ function initials(name?: string) {
   if (!name) return "?";
   const parts = name.trim().split(/\s+/);
   return (parts[0]?.[0] ?? "?").toUpperCase() + (parts[1]?.[0]?.toUpperCase() ?? "");
+}
+
+function mergeRawMessages(current: RawMessage[], incoming: RawMessage[]) {
+  const merged = new Map(current.map((message) => [message.id, message]));
+  for (const message of incoming) merged.set(message.id, message);
+  return Array.from(merged.values()).sort(
+    (a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
+  );
 }
 
 function StatusTick({ status }: { status?: MsgStatus }) {
@@ -63,6 +71,53 @@ export function ChatRoom({ room, onBack }: { room: Room; onBack?: () => void }) 
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const touchStart = useRef<{ x: number; y: number } | null>(null);
 
+  const syncMessages = useCallback(async () => {
+    if (!profile) return;
+
+    const raw = await fetchMessages(room.id);
+
+    setRawMessages((prev) => {
+      const next = mergeRawMessages(prev, raw);
+      const unchanged =
+        prev.length === next.length &&
+        prev.every(
+          (message, index) =>
+            message.id === next[index]?.id &&
+            message.encrypted_content === next[index]?.encrypted_content &&
+            message.nonce === next[index]?.nonce &&
+            message.created_at === next[index]?.created_at
+        );
+
+      return unchanged ? prev : next;
+    });
+
+    const cachedTexts = await getCachedMessageTexts(
+      room.id,
+      raw.map((message) => message.id)
+    );
+
+    setCachedTextById((prev) => {
+      const hasChanges = Object.entries(cachedTexts).some(
+        ([messageId, cachedText]) => prev[messageId] !== cachedText
+      );
+      return hasChanges ? { ...prev, ...cachedTexts } : prev;
+    });
+
+    setStatusById((prev) => {
+      const next = { ...prev };
+      let changed = false;
+
+      for (const message of raw) {
+        if (message.sender_id === profile.id && !next[message.id]) {
+          next[message.id] = "sent";
+          changed = true;
+        }
+      }
+
+      return changed ? next : prev;
+    });
+  }, [profile, room.id]);
+
   useEffect(() => {
     if (!profile || !keyPair) return;
     let cancelled = false;
@@ -77,22 +132,9 @@ export function ChatRoom({ room, onBack }: { room: Room; onBack?: () => void }) 
           if (cancelled) return;
           setRoomKey(rk);
         }
-        const raw = await fetchMessages(room.id);
+
+        await syncMessages();
         if (cancelled) return;
-        setRawMessages(raw);
-        const cachedTexts = await getCachedMessageTexts(
-          room.id,
-          raw.map((message) => message.id)
-        );
-        if (cancelled) return;
-        setCachedTextById(cachedTexts);
-        setStatusById((s) => {
-          const next = { ...s };
-          for (const r of raw) {
-            if (r.sender_id === profile.id && !next[r.id]) next[r.id] = "sent";
-          }
-          return next;
-        });
       } catch (e: any) {
         setErr(e?.message ?? "Failed to load room");
       }
@@ -100,7 +142,7 @@ export function ChatRoom({ room, onBack }: { room: Room; onBack?: () => void }) 
     return () => {
       cancelled = true;
     };
-  }, [room.id, room.is_group, profile?.id, keyPair]);
+  }, [room.id, room.is_group, profile?.id, keyPair, syncMessages]);
 
   useEffect(() => {
     if (!profile) return;
@@ -124,11 +166,38 @@ export function ChatRoom({ room, onBack }: { room: Room; onBack?: () => void }) 
           }
         }
       )
-      .subscribe();
+      .subscribe((status) => {
+        if (status === "SUBSCRIBED") {
+          void syncMessages();
+        }
+      });
     return () => {
       supabase.removeChannel(ch);
     };
-  }, [room.id, profile?.id]);
+  }, [room.id, profile?.id, syncMessages]);
+
+  useEffect(() => {
+    if (!profile) return;
+
+    const refresh = () => {
+      void syncMessages();
+    };
+
+    const intervalId = window.setInterval(refresh, 2500);
+    window.addEventListener("focus", refresh);
+
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === "visible") refresh();
+    };
+
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+
+    return () => {
+      window.clearInterval(intervalId);
+      window.removeEventListener("focus", refresh);
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+    };
+  }, [profile, syncMessages]);
 
   // Decrypt raw messages on every render so late context updates recover them.
   const decryptedMessages: UIMessage[] = rawMessages.map((r) => ({
