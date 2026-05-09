@@ -51,6 +51,9 @@ function StatusTick({ status }: { status?: MsgStatus }) {
 
 export function ChatRoom({ room, onBack }: { room: Room; onBack?: () => void }) {
   const { profile, keyPair, authUserId } = useAuth();
+  const myIds = profile
+    ? [profile.id, authUserId].filter((id): id is string => Boolean(id))
+    : [];
   const [members, setMembers] = useState<RoomMember[]>([]);
   const [roomKey, setRoomKey] = useState<Uint8Array | null>(null);
   // Raw rows (re-decrypted on render so late-arriving keys/members recover msgs).
@@ -112,7 +115,7 @@ export function ChatRoom({ room, onBack }: { room: Room; onBack?: () => void }) 
       let changed = false;
 
       for (const message of raw) {
-        if (message.sender_id === profile.id && !next[message.id]) {
+        if (myIds.includes(message.sender_id) && !next[message.id]) {
           next[message.id] = "sent";
           changed = true;
         }
@@ -120,7 +123,7 @@ export function ChatRoom({ room, onBack }: { room: Room; onBack?: () => void }) 
 
       return changed ? next : prev;
     });
-  }, [profile, room.id]);
+  }, [myIds, profile, room.id]);
 
   useEffect(() => {
     if (!profile || !keyPair) return;
@@ -132,7 +135,7 @@ export function ChatRoom({ room, onBack }: { room: Room; onBack?: () => void }) 
         if (cancelled) return;
         setMembers(mems);
         if (room.is_group) {
-          const rk = await getMyRoomKey(room.id, { id: profile.id, authUserId, keyPair });
+          const rk = await getMyRoomKey(room.id, { id: profile.id, authUserId: authUserId ?? undefined, keyPair });
           if (cancelled) return;
           setRoomKey(rk);
         }
@@ -171,7 +174,7 @@ export function ChatRoom({ room, onBack }: { room: Room; onBack?: () => void }) 
           setRawMessages((prev) =>
             prev.some((m) => m.id === raw.id) ? prev : [...prev, raw]
           );
-          if (raw.sender_id === profile.id) {
+          if (myIds.includes(raw.sender_id)) {
             setStatusById((s) => (s[raw.id] ? s : { ...s, [raw.id]: "sent" }));
           }
         }
@@ -185,7 +188,7 @@ export function ChatRoom({ room, onBack }: { room: Room; onBack?: () => void }) 
     return () => {
       supabase.removeChannel(ch);
     };
-  }, [room.id, profile?.id, syncMessages]);
+  }, [myIds, room.id, profile?.id, syncMessages]);
 
   useEffect(() => {
     if (!profile) return;
@@ -216,7 +219,7 @@ export function ChatRoom({ room, onBack }: { room: Room; onBack?: () => void }) 
       const decrypted = decryptMessageForRoom(r, {
         isGroup: room.is_group,
         me: keyPair,
-        myUserId: profile ? [profile.id, authUserId].filter(Boolean) : undefined,
+        myUserId: myIds,
         members,
         roomKey,
       });
@@ -230,7 +233,7 @@ export function ChatRoom({ room, onBack }: { room: Room; onBack?: () => void }) 
       }
       return decrypted;
     })(),
-    status: r.sender_id === profile?.id ? statusById[r.id] ?? "sent" : undefined,
+    status: myIds.includes(r.sender_id) ? statusById[r.id] ?? "sent" : undefined,
   }));
 
   useEffect(() => {
@@ -292,7 +295,9 @@ export function ChatRoom({ room, onBack }: { room: Room; onBack?: () => void }) 
         if (!roomKey) throw new Error("No room key");
         saved = await sendGroupMessage(room.id, body, profile.id, roomKey);
       } else {
-        const other = members.find((m) => m.user_id !== profile.id);
+        const other = members.find(
+          (m) => !myIds.includes(m.user_id) && !myIds.includes(m.canonical_user_id ?? "") && !myIds.includes(m.auth_user_id ?? "")
+        );
         if (!other) throw new Error("Recipient not found");
         saved = await sendDirectMessage(
           room.id,
@@ -409,7 +414,7 @@ export function ChatRoom({ room, onBack }: { room: Room; onBack?: () => void }) 
             </div>
           )}
           {messages.map((m, i, arr) => {
-            const mine = m.sender_id === profile?.id;
+            const mine = myIds.includes(m.sender_id);
             const prev = arr[i - 1];
             const showName = room.is_group && !mine && prev?.sender_id !== m.sender_id;
             const tail = prev?.sender_id !== m.sender_id;
