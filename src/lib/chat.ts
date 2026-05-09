@@ -247,10 +247,13 @@ async function findDirectRoom(a: string | string[], b: string | string[]): Promi
 // In 1:1 mode we encrypt each message asymmetrically so we don't need a shared
 // room key — we still create a sealed marker for membership.
 export async function getOrCreateDirectRoom(
-  me: { id: string; keyPair: KeyPair },
-  other: { id: string; public_key: string }
+  me: { id: string; keyPair: KeyPair; authUserId?: string },
+  other: { id: string; public_key: string; auth_user_id?: string | null }
 ): Promise<string> {
-  const existing = await findDirectRoom(me.id, other.id);
+  const existing = await findDirectRoom(
+    uniqueIds([me.id, me.authUserId]),
+    uniqueIds([other.id, other.auth_user_id])
+  );
   if (existing) return existing;
 
   // Seal a placeholder "room key" (random bytes) for both members so the
@@ -286,9 +289,9 @@ export async function getOrCreateDirectRoom(
 }
 
 export async function createGroupRoom(
-  me: { id: string; keyPair: KeyPair },
+  me: { id: string; keyPair: KeyPair; authUserId?: string },
   name: string,
-  members: { id: string; public_key: string }[]
+  members: { id: string; public_key: string; auth_user_id?: string | null }[]
 ): Promise<string> {
   const roomKey = newRoomKey();
 
@@ -415,9 +418,11 @@ export async function sendGroupMessage(
 export function decryptDirect(
   raw: RawMessage,
   me: KeyPair,
-  members: { user_id: string; public_key: string }[],
-  myUserId?: string
+  members: RoomMember[],
+  myUserId?: string | string[]
 ): string | null {
+  const myIds = uniqueIds(Array.isArray(myUserId) ? myUserId : [myUserId]);
+
   // Messages can be packed as "<recipient_ct>|<sender_ct>" with matching
   // packed nonces, so the sender can always decrypt their own outgoing copy
   // even on a fresh device. Legacy single-ciphertext rows still decrypt.
@@ -430,7 +435,7 @@ export function decryptDirect(
 
   // 1) If we are the sender and the message has a sender-self copy, decrypt
   //    it directly with our own keypair (box-to-self).
-  if (senderCt && senderNonce && myUserId && raw.sender_id === myUserId) {
+  if (senderCt && senderNonce && myIds.includes(raw.sender_id)) {
     const pt = boxDecrypt(senderCt, senderNonce, me.publicKey, me.secretKey);
     if (pt) return utf8.dec(pt);
   }
@@ -443,12 +448,12 @@ export function decryptDirect(
     candidates.push(candidate);
   };
 
-  if (myUserId && raw.sender_id === myUserId) {
-    pushCandidate(members.find((m) => m.user_id !== myUserId));
+  if (myIds.includes(raw.sender_id)) {
+    pushCandidate(members.find((m) => !memberHasIdentity(m, myIds)));
   }
-  pushCandidate(members.find((m) => m.user_id === raw.sender_id));
+  pushCandidate(members.find((m) => memberMatchesSender(m, raw.sender_id)));
   for (const member of members) {
-    if (member.user_id !== myUserId) pushCandidate(member);
+    if (!memberHasIdentity(member, myIds)) pushCandidate(member);
   }
 
   for (const counterparty of candidates) {
@@ -464,7 +469,7 @@ export function decryptDirect(
   console.warn("[chat] decryptDirect failed", {
     messageId: raw.id,
     senderId: raw.sender_id,
-    myUserId,
+    myUserId: myIds,
     memberIds: members.map((member) => member.user_id),
     ciphertextParts: ctParts.length,
     nonceParts: nParts.length,
@@ -484,7 +489,7 @@ export function decryptMessageForRoom(
   raw: RawMessage,
   ctx: MessageDecryptContext
 ): DecryptedMessage {
-  const sender = ctx.members.find((m) => m.user_id === raw.sender_id);
+  const sender = ctx.members.find((m) => memberMatchesSender(m, raw.sender_id));
 
   let text: string | null | undefined;
   if (ctx.isGroup) {
