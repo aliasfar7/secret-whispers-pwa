@@ -15,6 +15,7 @@ import { MessageSquarePlus, MoreVertical, Search } from "lucide-react";
 
 export function ChatShell() {
   const { profile, keyPair, authUserId, signOut } = useAuth();
+  const myIds = [profile?.id, authUserId].filter((id): id is string => Boolean(id));
   const [rooms, setRooms] = useState<Room[]>([]);
   const [activeId, setActiveId] = useState<string | null>(null);
   const [modalOpen, setModalOpen] = useState(false);
@@ -24,7 +25,7 @@ export function ChatShell() {
 
   const reload = useCallback(async () => {
     if (!profile || !keyPair) return;
-    const list = await listRoomsForUser([profile.id, authUserId]);
+    const list = await listRoomsForUser(myIds);
     const hydrated = await Promise.all(
       list.map(async (r) => {
         if (r.is_group && r.name) {
@@ -51,7 +52,7 @@ export function ChatShell() {
     );
     setRooms(hydrated);
     setLoading(false);
-  }, [authUserId, keyPair, profile]);
+  }, [keyPair, myIds, profile]);
 
   useEffect(() => {
     reload();

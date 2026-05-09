@@ -351,7 +351,7 @@ export async function fetchMessages(roomId: string, limit = 100) {
 export async function sendDirectMessage(
   roomId: string,
   text: string,
-  me: { id: string; keyPair: KeyPair },
+  me: { id: string; keyPair: KeyPair; authUserId?: string },
   recipient: { public_key: string }
 ): Promise<RawMessage> {
   const plaintext = utf8.enc(text);
