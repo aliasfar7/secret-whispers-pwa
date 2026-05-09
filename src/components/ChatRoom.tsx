@@ -50,7 +50,7 @@ function StatusTick({ status }: { status?: MsgStatus }) {
 }
 
 export function ChatRoom({ room, onBack }: { room: Room; onBack?: () => void }) {
-  const { profile, keyPair } = useAuth();
+  const { profile, keyPair, authUserId } = useAuth();
   const [members, setMembers] = useState<RoomMember[]>([]);
   const [roomKey, setRoomKey] = useState<Uint8Array | null>(null);
   // Raw rows (re-decrypted on render so late-arriving keys/members recover msgs).
@@ -132,7 +132,7 @@ export function ChatRoom({ room, onBack }: { room: Room; onBack?: () => void }) 
         if (cancelled) return;
         setMembers(mems);
         if (room.is_group) {
-          const rk = await getMyRoomKey(room.id, { id: profile.id, keyPair });
+          const rk = await getMyRoomKey(room.id, { id: profile.id, authUserId, keyPair });
           if (cancelled) return;
           setRoomKey(rk);
         }
@@ -216,7 +216,7 @@ export function ChatRoom({ room, onBack }: { room: Room; onBack?: () => void }) 
       const decrypted = decryptMessageForRoom(r, {
         isGroup: room.is_group,
         me: keyPair,
-        myUserId: profile?.id,
+        myUserId: profile ? [profile.id, authUserId].filter(Boolean) : undefined,
         members,
         roomKey,
       });
@@ -297,7 +297,7 @@ export function ChatRoom({ room, onBack }: { room: Room; onBack?: () => void }) 
         saved = await sendDirectMessage(
           room.id,
           body,
-          { id: profile.id, keyPair },
+          { id: profile.id, authUserId: authUserId ?? undefined, keyPair },
           { public_key: other.public_key }
         );
       }
