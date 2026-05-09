@@ -246,7 +246,10 @@ export function ChatRoom({ room, onBack }: { room: Room; onBack?: () => void }) 
     });
   }, [cachedTextById, decryptedMessages, room.id]);
 
-  const messages: UIMessage[] = [...decryptedMessages, ...pending];
+  const messages: UIMessage[] = [
+    ...decryptedMessages.filter((message) => Boolean(message.text?.trim()) || Boolean(message.tempId)),
+    ...pending,
+  ];
 
   useEffect(() => {
     scrollerRef.current?.scrollTo({ top: scrollerRef.current.scrollHeight });
