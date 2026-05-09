@@ -10,6 +10,7 @@ type AuthCtx = {
   session: Session | null;
   profile: Profile | null;
   keyPair: KeyPair | null;
+  authUserId: string | null;
   loading: boolean;
   needsUsername: boolean;
   /** Phrase to display once after a brand-new identity is created. */
@@ -156,6 +157,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         session,
         profile,
         keyPair,
+        authUserId: session?.user.id ?? null,
         loading,
         needsUsername,
         pendingBackupPhrase,

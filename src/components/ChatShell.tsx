@@ -14,7 +14,8 @@ import { RecoveryPhraseDialog } from "./RecoveryPhraseDialog";
 import { MessageSquarePlus, MoreVertical, Search } from "lucide-react";
 
 export function ChatShell() {
-  const { profile, keyPair, signOut } = useAuth();
+  const { profile, keyPair, authUserId, signOut } = useAuth();
+  const myIds = [profile?.id, authUserId].filter((id): id is string => Boolean(id));
   const [rooms, setRooms] = useState<Room[]>([]);
   const [activeId, setActiveId] = useState<string | null>(null);
   const [modalOpen, setModalOpen] = useState(false);
@@ -24,18 +25,18 @@ export function ChatShell() {
 
   const reload = useCallback(async () => {
     if (!profile || !keyPair) return;
-    const list = await listRoomsForUser(profile.id);
+    const list = await listRoomsForUser(myIds);
     const hydrated = await Promise.all(
       list.map(async (r) => {
         if (r.is_group && r.name) {
-          const key = await getMyRoomKey(r.id, { id: profile.id, keyPair });
+          const key = await getMyRoomKey(r.id, { id: profile.id, authUserId: authUserId ?? undefined, keyPair });
           r.display_name = key ? decryptRoomName(r.name, key) : "Encrypted group";
         } else if (!r.is_group) {
           const { data } = await supabase
             .from("room_members")
             .select("user_id")
             .eq("room_id", r.id)
-            .neq("user_id", profile.id);
+            .not("user_id", "in", `(${[profile.id, authUserId].filter(Boolean).map((id) => JSON.stringify(id)).join(",")})`);
           const otherId = data?.[0]?.user_id;
           if (otherId) {
             const { data: u } = await supabase
@@ -51,7 +52,7 @@ export function ChatShell() {
     );
     setRooms(hydrated);
     setLoading(false);
-  }, [keyPair, profile]);
+  }, [keyPair, myIds, profile]);
 
   useEffect(() => {
     reload();
@@ -67,7 +68,7 @@ export function ChatShell() {
           event: "INSERT",
           schema: "public",
           table: "room_members",
-          filter: `user_id=eq.${profile.id}`,
+          filter: `user_id=in.(${[profile.id, authUserId].filter(Boolean).map((id) => `\"${id}\"`).join(",")})`,
         },
         () => reload()
       )
@@ -92,7 +93,7 @@ export function ChatShell() {
       supabase.removeChannel(membershipsChannel);
       supabase.removeChannel(messagesChannel);
     };
-  }, [profile, reload]);
+  }, [authUserId, profile, reload]);
 
   useEffect(() => {
     if (!profile || !keyPair) return;
