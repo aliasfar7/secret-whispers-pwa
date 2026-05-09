@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useAuth } from "@/lib/auth";
 import { supabase } from "@/lib/supabase";
 import {
@@ -22,7 +22,7 @@ export function ChatShell() {
   const [recoveryOpen, setRecoveryOpen] = useState(false);
   const [loading, setLoading] = useState(true);
 
-  const reload = async () => {
+  const reload = useCallback(async () => {
     if (!profile || !keyPair) return;
     const list = await listRoomsForUser(profile.id);
     const hydrated = await Promise.all(
@@ -51,16 +51,15 @@ export function ChatShell() {
     );
     setRooms(hydrated);
     setLoading(false);
-  };
+  }, [keyPair, profile]);
 
   useEffect(() => {
     reload();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [profile?.id]);
+  }, [reload]);
 
   useEffect(() => {
     if (!profile) return;
-    const ch = supabase
+    const membershipsChannel = supabase
       .channel(`memberships:${profile.id}`)
       .on(
         "postgres_changes",
@@ -72,12 +71,51 @@ export function ChatShell() {
         },
         () => reload()
       )
+      .subscribe((status) => {
+        if (status === "SUBSCRIBED") void reload();
+      });
+
+    const messagesChannel = supabase
+      .channel(`rooms:${profile.id}:messages`)
+      .on(
+        "postgres_changes",
+        {
+          event: "INSERT",
+          schema: "public",
+          table: "messages",
+        },
+        () => reload()
+      )
       .subscribe();
+
     return () => {
-      supabase.removeChannel(ch);
+      supabase.removeChannel(membershipsChannel);
+      supabase.removeChannel(messagesChannel);
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [profile?.id]);
+  }, [profile, reload]);
+
+  useEffect(() => {
+    if (!profile || !keyPair) return;
+
+    const refresh = () => {
+      void reload();
+    };
+
+    const intervalId = window.setInterval(refresh, 2500);
+    window.addEventListener("focus", refresh);
+
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === "visible") refresh();
+    };
+
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+
+    return () => {
+      window.clearInterval(intervalId);
+      window.removeEventListener("focus", refresh);
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+    };
+  }, [keyPair, profile, reload]);
 
   const activeRoom = useMemo(
     () => rooms.find((r) => r.id === activeId),
